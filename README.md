@@ -13,7 +13,7 @@ Pierwsza wersja: PowerShell (opcjonalnie kompilacja do `.exe` przez PS2EXE).
 Sześć kategorii. Każda ma inny tryb odczytu, ale wszystkie zwracają ten sam wspólny obiekt,
 dzięki czemu diff i allowlist pozostają jednolite.
 
-### 1.1 Rejestr — klucze Run  `(tryb: enumeruj wszystkie wartości)`
+### 1.1 Rejestr - klucze Run  `(tryb: enumeruj wszystkie wartości)`
 
 ```
 HKCU:\Software\Microsoft\Windows\CurrentVersion\Run
@@ -27,9 +27,9 @@ HKLM:\Software\Microsoft\Windows\CurrentVersion\Run
 ```
 
 Najczęstsze miejsca. Wpis to nazwa + ścieżka do programu. HKCU dotyczy użytkownika,
-HKLM całego systemu. RunOnce — uruchamia się raz i kasuje wpis. RunOnceEx, RunServices,
-RunServicesOnce — starsze warianty, wciąż używane przez malware, bo bywają pomijane.
-Wow6432Node — klucze dla aplikacji 32-bit w 64-bitowym systemie. Policies — środowiska z GPO.
+HKLM całego systemu. RunOnce - uruchamia się raz i kasuje wpis. RunOnceEx, RunServices,
+RunServicesOnce - starsze warianty, wciąż używane przez malware, bo bywają pomijane.
+Wow6432Node - klucze dla aplikacji 32-bit w 64-bitowym systemie. Policies - środowiska z GPO.
 Każdą ścieżkę poprzedzamy `Test-Path` (nie wszystkie istnieją); HKLM wymaga uprawnień admina.
 
 ### 1.2 Relokacja folderu Startup (Shell Folders)  `(tryb: wskaźnik → porównaj + doskanuj)`
@@ -41,12 +41,12 @@ HKLM:\...\Explorer\User Shell Folders
 HKLM:\...\Explorer\Shell Folders
 ```
 
-Nie przechowują wpisów autostartu — wskazują, gdzie znajduje się folder Startup.
+Nie przechowują wpisów autostartu - wskazują, gdzie znajduje się folder Startup.
 Trik atakującego: zamiast wrzucać plik do Startupu, podmienia tu ścieżkę (wartości
 `Startup` i `Common Startup`), żeby ominąć skanery patrzące tylko na domyślną lokalizację.
-Sprawdzamy, czy wartość nadal wskazuje domyślny folder — jeśli nie, alert i skanujemy nową ścieżkę.
+Sprawdzamy, czy wartość nadal wskazuje domyślny folder - jeśli nie, alert i skanujemy nową ścieżkę.
 
-### 1.3 Rejestr — pojedyncze wartości  `(tryb: oczekiwana vs rzeczywista)`
+### 1.3 Rejestr - pojedyncze wartości  `(tryb: oczekiwana vs rzeczywista)`
 
 ```
 HKLM:\...\Winlogon → Shell                     (oczek.: explorer.exe)
@@ -56,7 +56,7 @@ HKCU:\Environment → UserInitMprLogonScript     (oczek.: brak)
 HKLM:\System\...\Session Manager → BootExecute (oczek.: autocheck autochk *)
 ```
 
-Tu nie enumerujemy — pilnujemy jednej, konkretnej wartości i jej poprawnej zawartości.
+Tu nie enumerujemy - pilnujemy jednej, konkretnej wartości i jej poprawnej zawartości.
 `Shell` i `Userinit` decydują, co startuje po zalogowaniu; `load` oraz `UserInitMprLogonScript`
 uruchamiają program/skrypt dla użytkownika (normalnie nieustawione); `BootExecute` działa
 bardzo wcześnie, jeszcze przed startem systemu. Cokolwiek odbiega od oczekiwanej wartości = alert.
@@ -68,10 +68,10 @@ bardzo wcześnie, jeszcze przed startem systemu. Cokolwiek odbiega od oczekiwane
 %ProgramData%\...\Start Menu\Programs\Startup
 ```
 
-Wszystko, co trafi do tych folderów, uruchamia się przy logowaniu — osobno dla użytkownika
+Wszystko, co trafi do tych folderów, uruchamia się przy logowaniu - osobno dla użytkownika
 i dla wszystkich. Nie tylko skróty `.lnk`: również pliki `.exe`, skrypty (`.bat`, `.cmd`,
 `.vbs`, `.js`) oraz inne pliki otwierane domyślnym programem. Dlatego skanujemy wszystkie pliki.
-Dla `.lnk` dodatkowo odczytujemy cel skrótu — bo istotna jest ścieżka docelowa, nie nazwa skrótu.
+Dla `.lnk` dodatkowo odczytujemy cel skrótu - bo istotna jest ścieżka docelowa, nie nazwa skrótu.
 
 ### 1.5 Usługi (Services)  `(tryb: enumeruj, StartMode = Auto)`
 
@@ -81,9 +81,9 @@ odczyt: Get-CimInstance Win32_Service   (StartMode = Auto)
 ```
 
 Usługi z trybem startu „Automatic" uruchamiają się przy starcie systemu, jeszcze przed
-zalogowaniem — głębiej niż klucze Run. Czytamy przez CIM/WMI, bo od razu dostajemy `PathName`
+zalogowaniem - głębiej niż klucze Run. Czytamy przez CIM/WMI, bo od razu dostajemy `PathName`
 (plik + argumenty), konto (`StartName`) i stan. Tu chowają się też sterowniki (typ `KernelDriver`)
-— w pierwszej wersji skupiamy się na zwykłych usługach. Usług są setki i większość jest legalna,
+- w pierwszej wersji skupiamy się na zwykłych usługach. Usług są setki i większość jest legalna,
 więc baseline + allowlist są tu kluczowe.
 
 ### 1.6 Harmonogram Zadań (Scheduled Tasks)  `(tryb: enumeruj, trigger logon/boot)`
@@ -93,7 +93,7 @@ C:\Windows\System32\Tasks   (zadania jako pliki XML)
 odczyt: Get-ScheduledTask    (trigger: logon / boot)
 ```
 
-Zadania wyzwalane przy logowaniu lub starcie systemu — popularny mechanizm trwałości,
+Zadania wyzwalane przy logowaniu lub starcie systemu - popularny mechanizm trwałości,
 bo omija klucze Run. Czytamy przez moduł `ScheduledTasks`; interesują nas triggery logon/boot
 (realny autostart), a z akcji wyciągamy plik i argumenty. Zadania czysto czasowe oznaczamy
 osobną kategorią. Systemowe wpisy w `\Microsoft\Windows\...` filtrujemy lub traktujemy jako znane.
@@ -105,7 +105,7 @@ Sygnał wart uwagi: akcja będąca skryptem (`powershell.exe -enc ...`).
 
 | Kategoria | Technika MITRE |
 |---|---|
-| Rejestr — klucze Run | T1547.001 |
+| Rejestr - klucze Run | T1547.001 |
 | Relokacja Shell Folders | T1547.001 |
 | Winlogon (Shell / Userinit) | T1547.004 |
 | load, UserInitMprLogonScript | T1037.001 |
@@ -124,10 +124,10 @@ Image File Execution Options, Active Setup, BHO / rozszerzenia powłoki.
 Każda kategoria ma własną tablicę (`runKeys`, `shellFolders`, `singleValues`, `startupFolders`,
 `services`, `scheduledTasks`). Wpisy mają jeden z trzech kształtów:
 
-- **Enumerowane** (`runKeys`, `startupFolders`, `services`, `scheduledTasks`) — `command`,
+- **Enumerowane** (`runKeys`, `startupFolders`, `services`, `scheduledTasks`) - `command`,
   `targetPath`, `sha256`, `signature`.
-- **Wskaźnik** (`shellFolders`) — `valueName` + `expected` vs `actual` ścieżka.
-- **Pojedyncza wartość** (`singleValues`) — `valueName` + `expected` vs `actual` zawartość.
+- **Wskaźnik** (`shellFolders`) - `valueName` + `expected` vs `actual` ścieżka.
+- **Pojedyncza wartość** (`singleValues`) - `valueName` + `expected` vs `actual` zawartość.
 
 ### Pola
 
@@ -245,7 +245,7 @@ Każda kategoria ma własną tablicę (`runKeys`, `shellFolders`, `singleValues`
 
 ## 4. Allowlist (`allowlist.json`)
 
-Osobny, prosty plik — lista zatwierdzonych `id` (+ opcjonalnie `sha256` dla ochrony przed
+Osobny, prosty plik - lista zatwierdzonych `id` (+ opcjonalnie `sha256` dla ochrony przed
 podmianą pliku pod tą samą nazwą).
 
 ```json
@@ -257,14 +257,14 @@ podmianą pliku pod tą samą nazwą).
 }
 ```
 
-- `matchBy: "sha256"` (domyślnie) — podmiana pliku = alert (trzeba aktualizować po update programu).
-- `matchBy: "id"` — zatwierdzenie tylko po tożsamości, dla często aktualizowanych programów.
+- `matchBy: "sha256"` (domyślnie) - podmiana pliku = alert (trzeba aktualizować po update programu).
+- `matchBy: "id"` - zatwierdzenie tylko po tożsamości, dla często aktualizowanych programów.
 
 ---
 
 ## 5. Format alertów (`alerts/`)
 
-Alert powstaje **tylko gdy wykryto zmianę** — czysty skan nie tworzy pliku.
+Alert powstaje **tylko gdy wykryto zmianę** - czysty skan nie tworzy pliku.
 Jeden plik na uruchomienie, w którym coś wykryto; nazwa = timestamp uruchomienia.
 
 ```
@@ -273,14 +273,14 @@ alerts/
   alert_2026-10-11_09-03-12.json
 ```
 
-Format: strukturalny diff w JSON (spójny z baselinem, maszynowo czytelny — folder `alerts/`
+Format: strukturalny diff w JSON (spójny z baselinem, maszynowo czytelny - folder `alerts/`
 jest punktem integracji dla powiadomień i, później, drivera).
 
 ### Typy zmian
 
-- **`new`** — nowa tożsamość (`id`), której nie było w baseline → niesie `current`.
-- **`changed`** — ta sama `id`, zmienił się `sha256`/`command` lub `actual` → niesie `before` + `after`.
-- **`removed`** — `id` był w baseline, zniknął → niesie `previous`.
+- **`new`** - nowa tożsamość (`id`), której nie było w baseline → niesie `current`.
+- **`changed`** - ta sama `id`, zmienił się `sha256`/`command` lub `actual` → niesie `before` + `after`.
+- **`removed`** - `id` był w baseline, zniknął → niesie `previous`.
 
 ### Przykład `alert_2026-10-10_20-21-05.json`
 
@@ -317,7 +317,7 @@ jest punktem integracji dla powiadomień i, później, drivera).
 ```
 
 Nagłówek (`scanTime`, `baselineTime`, `changeCount`) daje kontekst: kiedy program działał
-i względem jakiego baselinu liczył różnicę. Alert jest niezmiennym zapisem chwili — niezależnie
+i względem jakiego baselinu liczył różnicę. Alert jest niezmiennym zapisem chwili - niezależnie
 od tego, czy baseline zostanie potem zaktualizowany.
 
 Opcjonalnie: jedna linia do `alerts.log` dla czytania gołym okiem
@@ -328,18 +328,18 @@ Opcjonalnie: jedna linia do `alerts.log` dla czytania gołym okiem
 ## 6. Pliki projektu
 
 ```
-baseline.json      — aktualny stan prawdy (snapshot wszystkich źródeł)
-allowlist.json     — zatwierdzone wpisy
-alerts/            — strukturalne diffy, tworzone tylko przy zmianach
+baseline.json      - aktualny stan prawdy (snapshot wszystkich źródeł)
+allowlist.json     - zatwierdzone wpisy
+alerts/            - strukturalne diffy, tworzone tylko przy zmianach
   alert_<timestamp>.json
-alerts.log         — opcjonalny, czytelny log jednoliniowy
+alerts.log         - opcjonalny, czytelny log jednoliniowy
 ```
 
 ---
 
 ## 7. Zakres etapów
 
-1. **Monitoring (tryb użytkownika, PowerShell)** — enumeracja 6 źródeł, baseline, diff, alerty,
+1. **Monitoring (tryb użytkownika, PowerShell)** - enumeracja 6 źródeł, baseline, diff, alerty,
    powiadomienia. Wersja pierwsza; może być kompilowana do `.exe` (PS2EXE).
-2. **Driver (tryb jądra, później)** — blokowanie: przechwytywanie tworzenia procesów,
+2. **Driver (tryb jądra, później)** - blokowanie: przechwytywanie tworzenia procesów,
    zatrzymanie podejrzanego programu. Czyta ten sam folder `alerts/`.

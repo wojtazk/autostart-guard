@@ -18,7 +18,6 @@ permissions:
   contents: write      # potrzebne do utworzenia Release
 
 env:
-  SDK_VERSION: '10.0.22621.0'   # musi zgadzać się z WindowsTargetPlatformVersion w .vcxproj
   CONFIG: Release
   PLATFORM: x64
 
@@ -38,13 +37,39 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       # --- WDK + integracja z Visual Studio (toolset WindowsKernelModeDriver10.0) ---
-      # Chocolatey instaluje WDK dla Win11 22H2 (10.0.22621) wraz z rozszerzeniem
-      # VS. Jeśli kiedyś zawiedzie integracja toolsetu, patrz docs/CI.md -> EWDK.
-      - name: Install WDK (10.0.22621)
+      - name: Install WDK
         shell: pwsh
         run: |
           choco install windowsdriverkit11 -y --no-progress
           if ($LASTEXITCODE -ne 0) { throw "Instalacja WDK nie powiodła się" }
+
+      # --- KLUCZOWE: wykryj wersję kitu, która NAPRAWDĘ ma nagłówki kernel-mode ---
+      # Poprzedni build padał na 'ntddk.h not found', bo WindowsTargetPlatformVersion
+      # było zahardkodowane (22621), a WDK zainstalował się w innej wersji -> pusty
+      # KM_IncludePath -> kompilacja nagłówkami user mode. Tu bierzemy wersję, dla
+      # której istnieją i Include\<ver>\km\ntddk.h, i build\<ver>.
+      - name: Detect installed WDK version
+        shell: pwsh
+        run: |
+          $root = "${env:ProgramFiles(x86)}\Windows Kits\10"
+          Write-Host "Kity w: $root"
+          $ver = Get-ChildItem "$root\Include" -Directory -ErrorAction SilentlyContinue |
+                 Where-Object {
+                   (Test-Path "$root\Include\$($_.Name)\km\ntddk.h") -and
+                   (Test-Path "$root\build\$($_.Name)")
+                 } |
+                 Sort-Object { [version]$_.Name } -Descending |
+                 Select-Object -First 1
+
+          if (-not $ver) {
+            Write-Host "::error::Nie znaleziono kitu kernel-mode (km\ntddk.h + build\<ver>)."
+            Write-Host "Zawartość Include:"; Get-ChildItem "$root\Include" -ErrorAction SilentlyContinue | Select-Object Name
+            Write-Host "Zawartość build:";   Get-ChildItem "$root\build"   -ErrorAction SilentlyContinue | Select-Object Name
+            throw "Brak WDK kernel-mode na runnerze - patrz docs/CI.md (plan B: EWDK)."
+          }
+
+          Write-Host "Wykryta wersja WDK/SDK (kernel-mode): $($ver.Name)"
+          "WDK_VER=$($ver.Name)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build driver (Release|x64, bez podpisu MSBuild)
         shell: pwsh
@@ -53,7 +78,7 @@ jobs:
             /t:Build `
             /p:Configuration=$env:CONFIG `
             /p:Platform=$env:PLATFORM `
-            /p:WindowsTargetPlatformVersion=$env:SDK_VERSION `
+            /p:WindowsTargetPlatformVersion=$env:WDK_VER `
             /p:SignMode=Off `
             /m
           if ($LASTEXITCODE -ne 0) { throw "Build sterownika nie powiódł się" }
@@ -84,11 +109,13 @@ jobs:
             -KeyExportPolicy Exportable `
             -HashAlgorithm SHA256
 
-          # 3. signtool z zainstalowanego SDK.
-          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\$env:SDK_VERSION\x64\signtool.exe" -ErrorAction SilentlyContinue
+          # 3. signtool z wykrytego SDK (fallback: dowolny x64).
+          $kits = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+          $signtool = Get-ChildItem "$kits\$env:WDK_VER\x64\signtool.exe" -ErrorAction SilentlyContinue
           if (-not $signtool) {
-            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
-                        Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } | Select-Object -First 1
+            $signtool = Get-ChildItem "$kits" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+                        Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+                        Sort-Object FullName -Descending | Select-Object -First 1
           }
           if (-not $signtool) { throw "Nie znaleziono signtool.exe" }
 

@@ -67,10 +67,13 @@ $DevicePath = '\\.\AutostartGuard'
 
 # CTL_CODE(0x8123, fn, METHOD_BUFFERED, access)
 #   = (0x8123 << 16) | (access << 14) | (fn << 2) | 0
-$IOCTL_AG_SET_MODE = 0x8123A000  # fn 0x800, FILE_WRITE_ACCESS
-$IOCTL_AG_CLEAR_RULES = 0x8123A004  # fn 0x801, FILE_WRITE_ACCESS
-$IOCTL_AG_ADD_RULE = 0x8123A008  # fn 0x802, FILE_WRITE_ACCESS
-$IOCTL_AG_GET_STATS = 0x8123600C  # fn 0x803, FILE_READ_ACCESS
+# Sufiks L (Int64) + rzut na [uint32]: Windows PowerShell 5.1 parsuje 8-cyfrowy
+# literał hex z ustawionym najwyższym bitem jako UJEMNY Int32, a [uint32] na
+# wartości ujemnej rzuca wyjątek. L wymusza dodatni Int64 przed rzutem.
+$IOCTL_AG_SET_MODE = [uint32] 0x8123A000L  # fn 0x800, FILE_WRITE_ACCESS
+$IOCTL_AG_CLEAR_RULES = [uint32] 0x8123A004L  # fn 0x801, FILE_WRITE_ACCESS
+$IOCTL_AG_ADD_RULE = [uint32] 0x8123A008L  # fn 0x802, FILE_WRITE_ACCESS
+$IOCTL_AG_GET_STATS = [uint32] 0x8123600CL  # fn 0x803, FILE_READ_ACCESS
 
 $AG_MAX_PATH = 260                # znaki WCHAR
 $AG_RULE_SIZE = $AG_MAX_PATH * 2   # 520 bajtow
@@ -131,7 +134,7 @@ function Test-Admin {
 }
 
 function Open-AgDevice {
-    $GENERIC_READ = [uint32] 0x80000000
+    $GENERIC_READ = [uint32] 0x80000000L   # L: patrz uwaga przy stałych IOCTL (PS 5.1)
     $GENERIC_WRITE = [uint32] 0x40000000
     $OPEN_EXISTING = [uint32] 3
 

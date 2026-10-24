@@ -26,7 +26,7 @@ jobs:
     runs-on: windows-2022
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # --- Szybki gate: testy skanera (etap 1), zanim zabierzemy się za driver ---
       - name: Testy PowerShell (etap 1)
@@ -34,7 +34,7 @@ jobs:
         run: pwsh -File tools/tests/AutostartGuard.Tests.ps1
 
       - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+        uses: microsoft/setup-msbuild@v3
 
       # --- WDK + integracja z Visual Studio (toolset WindowsKernelModeDriver10.0) ---
       - name: Install WDK
@@ -169,7 +169,7 @@ jobs:
           Compress-Archive -Path dist\* -DestinationPath "AutostartGuard-$ver-portable.zip" -Force
 
       - name: Upload build artifacts (every run)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: autostart-guard-build
           path: |
@@ -181,7 +181,7 @@ jobs:
 
       - name: Create GitHub Release (on tag)
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: AutostartGuard ${{ github.ref_name }}
           generate_release_notes: true

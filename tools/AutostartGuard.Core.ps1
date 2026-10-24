@@ -242,9 +242,20 @@ function Get-ScheduledTaskEntries {
     try { $tasks = Get-ScheduledTask -ErrorAction Stop }
     catch { $Skipped.Value.Add("scheduledTasks: $($_.Exception.Message)"); return $out }
     foreach ($task in $tasks) {
-        $triggerTypes = @($task.Triggers | ForEach-Object { $_.CimClass.CimClassName })
-        $logonBoot = $triggerTypes | Where-Object { $_ -in 'MSFT_TaskLogonTrigger', 'MSFT_TaskBootTrigger' }
-        if (-not $logonBoot) { continue }
+        # Typ triggera czytamy z PSTypeNames (zawsze istnieje), a NIE z .CimClass:
+        # pod StrictMode odwołanie do .CimClass na triggerze, który jej nie wystawia,
+        # rzuca wyjątek. TypeNames CIM zawierają np. ...MSFT_TaskLogonTrigger.
+        $trig = $null
+        foreach ($t in @($task.Triggers)) {
+            if ($null -eq $t) { continue }
+            $names = @($t.PSObject.TypeNames) -join ';'
+            if     ($names -match 'LogonTrigger') { $trig = 'Logon'; break }
+            elseif ($names -match 'BootTrigger')  { $trig = 'Boot';  break }
+        }
+        if (-not $trig) { continue }   # tylko realny autostart: logon / boot
+
+        $account = if (@($task.PSObject.Properties.Name) -contains 'Principal' -and $task.Principal) { $task.Principal.UserId } else { $null }
+
         foreach ($act in @($task.Actions)) {
             if (@($act.PSObject.Properties.Name) -notcontains 'Execute') { continue }
             $exe = [string]$act.Execute
@@ -252,9 +263,8 @@ function Get-ScheduledTaskEntries {
             $arguments = if (@($act.PSObject.Properties.Name) -contains 'Arguments') { [string]$act.Arguments } else { '' }
             $full = ("$exe $arguments").Trim()
             $loc = ($task.TaskPath + $task.TaskName)
-            $trig = ($logonBoot | Select-Object -First 1) -replace 'MSFT_Task|Trigger', ''
             $out.Add((New-Entry -Source 'ScheduledTask' -Location $loc -Name $task.TaskName -Command $full `
-                        -Extra @{ trigger = $trig; account = $task.Principal.UserId }))
+                        -Extra @{ trigger = $trig; account = $account }))
         }
     }
     return $out

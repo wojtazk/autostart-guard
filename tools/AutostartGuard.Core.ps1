@@ -145,9 +145,9 @@ function Test-Admin {
     catch { return $false }
 }
 
-# Powiadomienie na pulpicie (dymek w zasobniku; na Win10/11 wyświetla się jako
-# toast). Działa tylko w interaktywnej sesji użytkownika - dlatego zadanie w
-# Harmonogramie musi być "przy logowaniu", w kontekście użytkownika, nie SYSTEM.
+# Powiadomienie na pulpicie (dymek w zasobniku; na Win10/11 wyswietla sie jako
+# toast). Dziala tylko w interaktywnej sesji uzytkownika - dlatego zadanie w
+# Harmonogramie musi byc "przy logowaniu", w kontekscie uzytkownika, nie SYSTEM.
 # Nigdy nie wywala skanu - przy braku GUI po prostu nic nie pokazuje.
 function Show-AgNotification {
     param([string] $Title, [string] $Message)
@@ -168,10 +168,10 @@ function Show-AgNotification {
 
 # Interaktywne okno decyzji dla nowego wpisu autostartu.
 # Zwraca: 'block' (Zablokuj) albo 'run' (Uruchom).
-# Okna NIE da się zamknąć bez wyboru - X / Alt+F4 są blokowane, dopóki
-# użytkownik nie kliknie Zablokuj albo Uruchom (pętla). Przycisk 'Pokaż'
-# otwiera plik alertu w Notatniku i NIE kończy decyzji.
-# Brak GUI (sesja bez pulpitu) -> zwraca 'block' (nie ma kogo zapytać).
+# Okna NIE da sie zamknac bez wyboru - X / Alt+F4 sa blokowane, dopoki
+# uzytkownik nie kliknie Zablokuj albo Uruchom (petla). Przycisk 'Pokaz'
+# otwiera plik alertu w Notatniku i NIE konczy decyzji.
+# Brak GUI (sesja bez pulpitu) -> zwraca 'block' (nie ma kogo zapytac).
 function Show-AgDecision {
     param([string] $EntryName, [string] $TargetPath, [string] $AlertFile)
     try {
@@ -180,7 +180,7 @@ function Show-AgDecision {
     }
     catch { return 'block' }
 
-    $script:agChoice = $null     # dopóki null -> brak decyzji, okno się nie zamknie
+    $script:agChoice = $null     # dopoki null -> brak decyzji, okno sie nie zamknie
 
     $form = New-Object System.Windows.Forms.Form
     $form.Text = 'AutostartGuard - nowy wpis autostartu'
@@ -189,12 +189,12 @@ function Show-AgDecision {
     $form.TopMost = $true
     $form.FormBorderStyle = 'FixedDialog'
     $form.MaximizeBox = $false; $form.MinimizeBox = $false
-    $form.ControlBox = $false    # bez przycisku X w pasku tytułu
+    $form.ControlBox = $false    # bez przycisku X w pasku tytulu
 
     $lbl = New-Object System.Windows.Forms.Label
     $lbl.Location = New-Object System.Drawing.Point(16, 16)
     $lbl.Size = New-Object System.Drawing.Size(500, 120)
-    $lbl.Text = "Wykryto NOWY wpis autostartu (poza baseline i allowlistą):`r`n`r`n$EntryName`r`n$TargetPath`r`n`r`nWybierz - okna nie da się zamknąć bez decyzji."
+    $lbl.Text = "Wykryto NOWY wpis autostartu (poza baseline i allowlista):`r`n`r`n$EntryName`r`n$TargetPath`r`n`r`nWybierz - okna nie da sie zamknac bez decyzji."
     $form.Controls.Add($lbl)
 
     $bBlock = New-Object System.Windows.Forms.Button
@@ -206,10 +206,10 @@ function Show-AgDecision {
     $bRun.Add_Click({ $script:agChoice = 'run'; $form.Close() })
 
     $bShow = New-Object System.Windows.Forms.Button
-    $bShow.Text = 'Pokaż'; $bShow.Location = New-Object System.Drawing.Point(350, 150); $bShow.Size = New-Object System.Drawing.Size(150, 34)
+    $bShow.Text = 'Pokaz'; $bShow.Location = New-Object System.Drawing.Point(350, 150); $bShow.Size = New-Object System.Drawing.Size(150, 34)
     $bShow.Add_Click({ if ($AlertFile -and (Test-Path -LiteralPath $AlertFile)) { Start-Process notepad.exe $AlertFile } }.GetNewClosure())
 
-    # Blokuj zamknięcie (Alt+F4 itp.), dopóki nie ma decyzji.
+    # Blokuj zamkniecie (Alt+F4 itp.), dopoki nie ma decyzji.
     $form.Add_FormClosing({ param($s, $e) if ($null -eq $script:agChoice) { $e.Cancel = $true } })
 
     $form.Controls.AddRange(@($bBlock, $bRun, $bShow))
@@ -229,7 +229,7 @@ function Get-AgAllowed {
         $j = Get-Content -LiteralPath $AllowFile -Raw | ConvertFrom-Json
         if (@($j.PSObject.Properties.Name) -contains 'allowed') { return @($j.allowed) }
     }
-    catch { Write-Warning "Niepoprawny allowlist.json - ignoruję: $($_.Exception.Message)" }
+    catch { Write-Warning "Niepoprawny allowlist.json - ignoruje: $($_.Exception.Message)" }
     return @()
 }
 
@@ -241,7 +241,7 @@ function Add-AgAllowEntry {
     @{ allowed = $existing } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $AllowFile -Encoding UTF8
 }
 
-# --- Zapis alertu (wspólny dla Scan i Watch) ----------------------- #
+# --- Zapis alertu (wspolny dla Scan i Watch) ----------------------- #
 
 function Write-AgAlert {
     param($Changes, $Current, $Baseline, [string] $AlertsDir, [string] $DataPath)
@@ -262,7 +262,7 @@ function Write-AgAlert {
     return $file
 }
 
-# Wyłuskuje targetPath ze zmiany typu 'new' (bezpiecznie, pod StrictMode).
+# Wyluskuje targetPath ze zmiany typu 'new' (bezpiecznie, pod StrictMode).
 function Get-ChangeTarget {
     param($Change)
     if (@($Change.PSObject.Properties.Name) -notcontains 'current') { return $null }
@@ -270,6 +270,26 @@ function Get-ChangeTarget {
     if ($null -eq $cur) { return $null }
     if (@($cur.PSObject.Properties.Name) -notcontains 'targetPath') { return $null }
     return $cur.targetPath
+}
+
+# Podpis pliku ze zmiany typu 'new'.
+function Get-ChangeSignature {
+    param($Change)
+    if (@($Change.PSObject.Properties.Name) -notcontains 'current') { return $null }
+    $cur = $Change.current
+    if ($null -eq $cur) { return $null }
+    if (@($cur.PSObject.Properties.Name) -notcontains 'signature') { return $null }
+    return $cur.signature
+}
+
+# Czy podpis pochodzi od Microsoftu. Pole 'signature' jest ustawiane na CN
+# wystawcy TYLKO gdy Authenticode jest WAZNY (Status=Valid) - wiec wartosc
+# zaczynajaca sie od "Microsoft" oznacza faktycznie zweryfikowany podpis MS
+# (malware nie podrobi waznego podpisu Microsoftu).
+function Test-AgTrustedSigner {
+    param([string] $Signature)
+    if ([string]::IsNullOrWhiteSpace($Signature)) { return $false }
+    return ($Signature -like 'Microsoft*')
 }
 
 function Get-FileFacts {
@@ -370,8 +390,8 @@ function Get-ScheduledTaskEntries {
     catch { $Skipped.Value.Add("scheduledTasks: $($_.Exception.Message)"); return $out }
     foreach ($task in $tasks) {
         # Typ triggera czytamy z PSTypeNames (zawsze istnieje), a NIE z .CimClass:
-        # pod StrictMode odwołanie do .CimClass na triggerze, który jej nie wystawia,
-        # rzuca wyjątek. TypeNames CIM zawierają np. ...MSFT_TaskLogonTrigger.
+        # pod StrictMode odwolanie do .CimClass na triggerze, ktory jej nie wystawia,
+        # rzuca wyjatek. TypeNames CIM zawieraja np. ...MSFT_TaskLogonTrigger.
         $trig = $null
         foreach ($t in @($task.Triggers)) {
             if ($null -eq $t) { continue }

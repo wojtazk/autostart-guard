@@ -134,6 +134,13 @@ switch ($Action) {
                 $target = Get-ChangeTarget -Change $c
                 $name = $c.id -replace '.*\|', ''
 
+                # Zaufany podpis Microsoftu -> auto-zezwol (svchost itp. nie wyskakuja).
+                if (Test-AgTrustedSigner (Get-ChangeSignature -Change $c)) {
+                    Add-AgAllowEntry -AllowFile $allowFile -Id $c.id -Note 'Auto: podpis Microsoft'
+                    Write-Host "  [MICROSOFT] $name -> zaufany podpis, pomijam"
+                    continue
+                }
+
                 # Domyslnie blokuj (dopisz sciezke do listy blokad).
                 if ($target -and ($blocked -notcontains $target)) { $blocked += $target }
 

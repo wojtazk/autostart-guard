@@ -1,7 +1,7 @@
 # Anioł stróż autostartu (AutostartGuard)
 
 <!-- Podmień <owner>/<repo> na swoje repozytorium, aby badge działał -->
-[![build-driver](https://github.com/<owner>/<repo>/actions/workflows/build-driver.yml/badge.svg)](https://github.com/<owner>/<repo>/actions/workflows/build-driver.yml)
+[![build-driver](https://github.com/wojtazk/autostart-guard/actions/workflows/build-driver.yml/badge.svg)](https://github.com/wojtazk/autostart-guard/actions/workflows/build-driver.yml)
 
 Narzędzie monitorujące automatyczne uruchamianie aplikacji w Windows i blokujące
 podejrzane wpisy. Projekt dzieli się na dwa etapy:

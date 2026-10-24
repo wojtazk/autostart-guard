@@ -1,0 +1,42 @@
+# --- Visual Studio / WDK build output ---
+x64/
+Debug/
+Release/
+ARM64/
+*.obj
+*.pdb
+*.sys
+*.cer
+*.ilk
+*.exp
+*.lib
+*.log
+*.tlog
+*.lastbuildstate
+*.recipe
+*.FileListAbsolute.txt
+*.CppClean.log
+.vs/
+*.vcxproj.user
+
+# --- Dane runtime skanera (nie wersjonujemy stanu maszyny) ---
+autostart-guard/
+**/baseline.json
+**/allowlist.json
+**/alerts/
+**/alerts.log
+
+# Wyjątek: przykładowe alerty trzymamy w repo jako materiał do testów
+!tools/sample-alerts/
+!tools/sample-alerts/*.json
+
+# --- Wyjście CI / instalatora ---
+dist/
+installer/Output/
+AutostartGuard-*-portable.zip
+AutostartGuard-Setup-*.exe
+
+# --- Inne ---
+*.swp
+*~
+.DS_Store

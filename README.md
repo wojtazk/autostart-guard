@@ -1,345 +1,172 @@
-# Anioł stróż autostartu :)
+# Anioł stróż autostartu (AutostartGuard)
 
-Monitor automatycznego uruchamiania aplikacji w Windows: enumeracja źródeł autostartu,
-wykrywanie nowych/zmienionych wpisów względem baselinu, powiadamianie. Blokowanie (driver)
-w osobnym, późniejszym etapie.
+[![build-driver](https://github.com/wojtazk/autostart-guard/actions/workflows/build-driver.yml/badge.svg)](https://github.com/wojtazk/autostart-guard/actions/workflows/build-driver.yml)
 
-Pierwsza wersja: PowerShell (opcjonalnie kompilacja do `.exe` przez PS2EXE).
+Narzędzie monitorujące automatyczne uruchamianie aplikacji w Windows i blokujące
+podejrzane wpisy. Projekt dzieli się na dwa etapy:
 
----
+- **Etap 1 — monitoring (PowerShell).** Enumeruje punkty autostartu, buduje
+  baseline, wykrywa nowe/zmienione/usunięte wpisy i zapisuje strukturalny diff
+  do `alerts/`. Działa samodzielnie.
+- **Etap 2 — blokowanie (driver trybu jądra).** Sterownik przechwytuje tworzenie
+  procesów i w trybie `enforce` odmawia uruchomienia plików z reguł. Reguły
+  pochodzą z alertów etapu 1, wgrywane przez klienta user mode.
 
-## 1. Źródła autostartu
-
-Sześć kategorii. Każda ma inny tryb odczytu, ale wszystkie zwracają ten sam wspólny obiekt,
-dzięki czemu diff i allowlist pozostają jednolite.
-
-### 1.1 Rejestr - klucze Run  `(tryb: enumeruj wszystkie wartości)`
-
-```
-HKCU:\Software\Microsoft\Windows\CurrentVersion\Run
-HKLM:\Software\Microsoft\Windows\CurrentVersion\Run
-...\RunOnce
-...\RunOnceEx
-...\Policies\Explorer\Run
-...\Wow6432Node\Microsoft\Windows\CurrentVersion\Run
-...\RunServices
-...\RunServicesOnce
-```
-
-Najczęstsze miejsca. Wpis to nazwa + ścieżka do programu. HKCU dotyczy użytkownika,
-HKLM całego systemu. RunOnce - uruchamia się raz i kasuje wpis. RunOnceEx, RunServices,
-RunServicesOnce - starsze warianty, wciąż używane przez malware, bo bywają pomijane.
-Wow6432Node - klucze dla aplikacji 32-bit w 64-bitowym systemie. Policies - środowiska z GPO.
-Każdą ścieżkę poprzedzamy `Test-Path` (nie wszystkie istnieją); HKLM wymaga uprawnień admina.
-
-### 1.2 Relokacja folderu Startup (Shell Folders)  `(tryb: wskaźnik → porównaj + doskanuj)`
-
-```
-HKCU:\...\Explorer\User Shell Folders
-HKCU:\...\Explorer\Shell Folders
-HKLM:\...\Explorer\User Shell Folders
-HKLM:\...\Explorer\Shell Folders
-```
-
-Nie przechowują wpisów autostartu - wskazują, gdzie znajduje się folder Startup.
-Trik atakującego: zamiast wrzucać plik do Startupu, podmienia tu ścieżkę (wartości
-`Startup` i `Common Startup`), żeby ominąć skanery patrzące tylko na domyślną lokalizację.
-Sprawdzamy, czy wartość nadal wskazuje domyślny folder - jeśli nie, alert i skanujemy nową ścieżkę.
-
-### 1.3 Rejestr - pojedyncze wartości  `(tryb: oczekiwana vs rzeczywista)`
-
-```
-HKLM:\...\Winlogon → Shell                     (oczek.: explorer.exe)
-HKLM:\...\Winlogon → Userinit                  (oczek.: ...\userinit.exe,)
-HKCU:\...\NT\CurrentVersion\Windows → load     (oczek.: puste)
-HKCU:\Environment → UserInitMprLogonScript     (oczek.: brak)
-HKLM:\System\...\Session Manager → BootExecute (oczek.: autocheck autochk *)
-```
-
-Tu nie enumerujemy - pilnujemy jednej, konkretnej wartości i jej poprawnej zawartości.
-`Shell` i `Userinit` decydują, co startuje po zalogowaniu; `load` oraz `UserInitMprLogonScript`
-uruchamiają program/skrypt dla użytkownika (normalnie nieustawione); `BootExecute` działa
-bardzo wcześnie, jeszcze przed startem systemu. Cokolwiek odbiega od oczekiwanej wartości = alert.
-
-### 1.4 Foldery Startup  `(tryb: skanuj wszystkie pliki)`
-
-```
-%AppData%\...\Start Menu\Programs\Startup
-%ProgramData%\...\Start Menu\Programs\Startup
-```
-
-Wszystko, co trafi do tych folderów, uruchamia się przy logowaniu - osobno dla użytkownika
-i dla wszystkich. Nie tylko skróty `.lnk`: również pliki `.exe`, skrypty (`.bat`, `.cmd`,
-`.vbs`, `.js`) oraz inne pliki otwierane domyślnym programem. Dlatego skanujemy wszystkie pliki.
-Dla `.lnk` dodatkowo odczytujemy cel skrótu - bo istotna jest ścieżka docelowa, nie nazwa skrótu.
-
-### 1.5 Usługi (Services)  `(tryb: enumeruj, StartMode = Auto)`
-
-```
-HKLM:\SYSTEM\CurrentControlSet\Services
-odczyt: Get-CimInstance Win32_Service   (StartMode = Auto)
-```
-
-Usługi z trybem startu „Automatic" uruchamiają się przy starcie systemu, jeszcze przed
-zalogowaniem - głębiej niż klucze Run. Czytamy przez CIM/WMI, bo od razu dostajemy `PathName`
-(plik + argumenty), konto (`StartName`) i stan. Tu chowają się też sterowniki (typ `KernelDriver`)
-- w pierwszej wersji skupiamy się na zwykłych usługach. Usług są setki i większość jest legalna,
-więc baseline + allowlist są tu kluczowe.
-
-### 1.6 Harmonogram Zadań (Scheduled Tasks)  `(tryb: enumeruj, trigger logon/boot)`
-
-```
-C:\Windows\System32\Tasks   (zadania jako pliki XML)
-odczyt: Get-ScheduledTask    (trigger: logon / boot)
-```
-
-Zadania wyzwalane przy logowaniu lub starcie systemu - popularny mechanizm trwałości,
-bo omija klucze Run. Czytamy przez moduł `ScheduledTasks`; interesują nas triggery logon/boot
-(realny autostart), a z akcji wyciągamy plik i argumenty. Zadania czysto czasowe oznaczamy
-osobną kategorią. Systemowe wpisy w `\Microsoft\Windows\...` filtrujemy lub traktujemy jako znane.
-Sygnał wart uwagi: akcja będąca skryptem (`powershell.exe -enc ...`).
+> **To projekt na zajęcia, nie produkt.** Tryb `enforce` realnie blokuje
+> uruchamianie procesów — testować wyłącznie na maszynie wirtualnej ze snapshotem.
 
 ---
 
-## 2. Mapowanie na MITRE ATT&CK
+## Jak to się spina
 
-| Kategoria | Technika MITRE |
-|---|---|
-| Rejestr - klucze Run | T1547.001 |
-| Relokacja Shell Folders | T1547.001 |
-| Winlogon (Shell / Userinit) | T1547.004 |
-| load, UserInitMprLogonScript | T1037.001 |
-| Foldery Startup | T1547.001 |
-| Usługi | T1543.003 |
-| Harmonogram Zadań | T1053.005 |
+```
+┌─ ETAP 1 (user mode) ──────────────┐     ┌─ ETAP 2 (kernel) ───────────┐
+│ AutostartGuard.ps1                │     │ process_filter.sys          │
+│   enumeracja 6 źródeł             │     │   callback na tworzenie     │
+│   → baseline.json                 │     │   procesu                   │
+│   → diff → alerts/*.json          │     │   płaska lista reguł        │
+└───────────────┬───────────────────┘     └──────────────▲──────────────┘
+                │ alerts/*.json                          │ IOCTL (DeviceIoControl)
+                │                                        │
+                └──────────► AutostartGuardCtl.ps1 ──────┘
+                             czyta alerty, wyciąga targetPath,
+                             wgrywa reguły do drivera
+```
 
-**Świadomie pomijamy** (zbyt czasochłonne / dużo szumu): T1547.002 (Authentication Packages),
-T1547.003 (Time Providers), T1547.005 (Security Support Providers), AppInit_DLLs,
-Image File Execution Options, Active Setup, BHO / rozszerzenia powłoki.
+Driver świadomie **nie** czyta `alerts/` ani nie parsuje JSON-a (tryb jądra nie
+ma do tego bibliotek, a operacje na plikach z kontekstu callbacku grożą
+zakleszczeniem). Polityka żyje w user mode, egzekucja w jądrze.
 
 ---
 
-## 3. Format baselinu (`baseline.json`)
+## Źródła autostartu (etap 1)
 
-Każda kategoria ma własną tablicę (`runKeys`, `shellFolders`, `singleValues`, `startupFolders`,
-`services`, `scheduledTasks`). Wpisy mają jeden z trzech kształtów:
+Sześć kategorii, każda zwraca ten sam wspólny obiekt:
 
-- **Enumerowane** (`runKeys`, `startupFolders`, `services`, `scheduledTasks`) - `command`,
-  `targetPath`, `sha256`, `signature`.
-- **Wskaźnik** (`shellFolders`) - `valueName` + `expected` vs `actual` ścieżka.
-- **Pojedyncza wartość** (`singleValues`) - `valueName` + `expected` vs `actual` zawartość.
+| Kategoria | Co obejmuje | MITRE ATT&CK |
+|---|---|---|
+| `runKeys` | klucze Run/RunOnce/RunServices/Policies (HKCU+HKLM, Wow6432Node) | T1547.001 |
+| `shellFolders` | relokacja folderu Startup (User Shell Folders) | T1547.001 |
+| `singleValues` | Winlogon Shell/Userinit, load, UserInitMprLogonScript, BootExecute | T1547.004, T1037.001 |
+| `startupFolders` | pliki w folderach Startup (nie tylko `.lnk`) | T1547.001 |
+| `services` | usługi z `StartMode=Auto` | T1543.003 |
+| `scheduledTasks` | zadania z triggerem logon/boot | T1053.005 |
 
-### Pola
+Szczegółowy opis kluczy, formatów `baseline.json` / `allowlist.json` / alertów:
+[`docs/reference.md`](docs/reference.md). Schemat działania: [`docs/schemat.svg`](docs/schemat.svg).
 
-| Pole | Znaczenie |
-|---|---|
-| `id` | Stabilna tożsamość: `źródło\|lokalizacja\|nazwa`. Po tym diffujemy istnienie wpisu. |
-| `source` | Typ źródła (RunKey, StartupFolder, Service, ScheduledTask, ShellFolder, SingleValue). |
-| `location` | Konkretny klucz / folder / ścieżka zadania. |
-| `name` | Nazwa wartości / pliku / usługi / zadania. |
-| `command` | Pełna komenda (surowa, z argumentami). |
-| `targetPath` | Sam plik wyłuskany z komendy (do hasha i podpisu). |
-| `sha256` | Hash pliku docelowego; `null` gdy plik nie istnieje (sam w sobie sygnał). |
-| `signature` | Podmiot podpisujący albo `"Unsigned"`. |
-| `firstSeen` | Kiedy wpis pierwszy raz zobaczyliśmy. |
-| `displayName`, `startMode`, `account` | Tylko usługi. |
-| `trigger`, `account` | Tylko zadania. |
-| `valueName`, `expected`, `actual` | Tylko `shellFolders` i `singleValues`. |
+---
 
-### Przykład
+## Szybki start
 
-```json
-{
-  "schemaVersion": 1,
-  "generatedAt": "2026-10-10T20:00:00+02:00",
-  "hostname": "DESKTOP-WK",
+### Etap 1 — monitoring (wystarczy PowerShell 5.1+ / 7+, do pełnego skanu admin)
 
-  "runKeys": [
-    {
-      "id": "RunKey|HKCU:\\...\\Run|OneDrive",
-      "source": "RunKey",
-      "location": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-      "name": "OneDrive",
-      "command": "\"C:\\Program Files\\Microsoft OneDrive\\OneDrive.exe\" /background",
-      "targetPath": "C:\\Program Files\\Microsoft OneDrive\\OneDrive.exe",
-      "sha256": "9F2A1C...E4",
-      "signature": "Microsoft Corporation",
-      "firstSeen": "2026-10-10T20:00:00+02:00"
-    }
-  ],
+```powershell
+cd tools
 
-  "startupFolders": [
-    {
-      "id": "StartupFolder|user|Spotify.lnk",
-      "source": "StartupFolder",
-      "location": "C:\\Users\\wk\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup",
-      "name": "Spotify.lnk",
-      "command": "C:\\Users\\wk\\AppData\\Roaming\\Spotify\\Spotify.exe",
-      "targetPath": "C:\\Users\\wk\\AppData\\Roaming\\Spotify\\Spotify.exe",
-      "sha256": "11BE77...A0",
-      "signature": "Spotify AB",
-      "firstSeen": "2026-10-10T20:00:00+02:00"
-    }
-  ],
+# 1. Zbuduj baseline (stan odniesienia)
+.\AutostartGuard.ps1 -Action Baseline
 
-  "services": [
-    {
-      "id": "Service|Spooler",
-      "source": "Service",
-      "location": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Spooler",
-      "name": "Spooler",
-      "displayName": "Print Spooler",
-      "command": "C:\\Windows\\System32\\spoolsv.exe",
-      "targetPath": "C:\\Windows\\System32\\spoolsv.exe",
-      "startMode": "Auto",
-      "account": "LocalSystem",
-      "sha256": "C3D4...9B",
-      "signature": "Microsoft Windows",
-      "firstSeen": "2026-10-10T20:00:00+02:00"
-    }
-  ],
+# 2. Skanuj — alert powstaje tylko, jeśli coś się zmieniło
+.\AutostartGuard.ps1 -Action Scan
+#    → ..\autostart-guard\alerts\alert_<timestamp>.json
+```
 
-  "scheduledTasks": [
-    {
-      "id": "ScheduledTask|\\MyApp\\Updater",
-      "source": "ScheduledTask",
-      "location": "\\MyApp\\Updater",
-      "name": "Updater",
-      "command": "C:\\Program Files\\MyApp\\updater.exe --silent",
-      "targetPath": "C:\\Program Files\\MyApp\\updater.exe",
-      "trigger": "Logon",
-      "account": "SYSTEM",
-      "sha256": "77AA...1F",
-      "signature": "MyApp Sp. z o.o.",
-      "firstSeen": "2026-10-10T20:00:00+02:00"
-    }
-  ],
+Folder roboczy (`baseline.json`, `allowlist.json`, `alerts/`) domyślnie
+`.\autostart-guard`; zmienia go `-DataPath`.
 
-  "shellFolders": [
-    {
-      "id": "ShellFolder|HKCU|Startup",
-      "source": "ShellFolder",
-      "location": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders",
-      "valueName": "Startup",
-      "expected": "%USERPROFILE%\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup",
-      "actual": "%USERPROFILE%\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup",
-      "firstSeen": "2026-10-10T20:00:00+02:00"
-    }
-  ],
+### Etap 2 — blokowanie (VM w trybie test signing, jako administrator)
 
-  "singleValues": [
-    {
-      "id": "SingleValue|Winlogon|Shell",
-      "source": "SingleValue",
-      "location": "HKLM:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
-      "valueName": "Shell",
-      "expected": "explorer.exe",
-      "actual": "explorer.exe",
-      "firstSeen": "2026-10-10T20:00:00+02:00"
-    }
-  ]
-}
+Gotowy driver + instalator pobierzesz z [**Releases**](../../releases) (budowane
+automatycznie — patrz niżej). Build lokalny, instalacja i pełny scenariusz
+demonstracyjny: [`docs/DRIVER.md`](docs/DRIVER.md).
+
+```powershell
+cd tools
+
+# podgląd, co zostałoby wgrane (bez drivera, bez admina)
+.\AutostartGuardCtl.ps1 -Action Load -AlertsPath ..\autostart-guard\alerts -DryRun
+
+# wgranie reguł i włączenie blokowania
+.\AutostartGuardCtl.ps1 -Action Load -AlertsPath ..\autostart-guard\alerts
+.\AutostartGuardCtl.ps1 -Action Mode -Mode enforce -Force
 ```
 
 ---
 
-## 4. Allowlist (`allowlist.json`)
+## Testy
 
-Osobny, prosty plik - lista zatwierdzonych `id` (+ opcjonalnie `sha256` dla ochrony przed
-podmianą pliku pod tą samą nazwą).
-
-```json
-{
-  "allowed": [
-    { "id": "RunKey|HKCU:\\...\\Run|OneDrive", "sha256": "9F2A1C...E4", "note": "Microsoft OneDrive" },
-    { "id": "Service|Spooler", "matchBy": "id", "note": "Usługa systemowa" }
-  ]
-}
+```powershell
+pwsh -File tools/tests/AutostartGuard.Tests.ps1
 ```
 
-- `matchBy: "sha256"` (domyślnie) - podmiana pliku = alert (trzeba aktualizować po update programu).
-- `matchBy: "id"` - zatwierdzenie tylko po tożsamości, dla często aktualizowanych programów.
+Testy jednostkowe i integracyjne (logika, format alertów) — przenośne, działają
+też na Linux/macOS w CI, bez Windows. Plan testów i scenariusze systemowe na VM:
+[`docs/testy.md`](docs/testy.md).
 
 ---
 
-## 5. Format alertów (`alerts/`)
+## Automatyczny build i Releases (GitHub Actions)
 
-Alert powstaje **tylko gdy wykryto zmianę** - czysty skan nie tworzy pliku.
-Jeden plik na uruchomienie, w którym coś wykryto; nazwa = timestamp uruchomienia.
+Driver budowany jest automatycznie na runnerze Windows: instalacja WDK,
+kompilacja (`Release|x64`), podpis certyfikatem testowym, instalator i upload do
+Releases. Workflow: [`.github/workflows/build-driver.yml`](.github/workflows/build-driver.yml),
+szczegóły: [`docs/CI.md`](docs/CI.md).
 
-```
-alerts/
-  alert_2026-10-10_20-21-05.json
-  alert_2026-10-11_09-03-12.json
-```
+Wydanie wersji:
 
-Format: strukturalny diff w JSON (spójny z baselinem, maszynowo czytelny - folder `alerts/`
-jest punktem integracji dla powiadomień i, później, drivera).
-
-### Typy zmian
-
-- **`new`** - nowa tożsamość (`id`), której nie było w baseline → niesie `current`.
-- **`changed`** - ta sama `id`, zmienił się `sha256`/`command` lub `actual` → niesie `before` + `after`.
-- **`removed`** - `id` był w baseline, zniknął → niesie `previous`.
-
-### Przykład `alert_2026-10-10_20-21-05.json`
-
-```json
-{
-  "scanTime": "2026-10-10T20:21:05+02:00",
-  "hostname": "DESKTOP-WK",
-  "baselineTime": "2026-10-09T18:00:00+02:00",
-  "changeCount": 2,
-  "changes": [
-    {
-      "type": "new",
-      "category": "runKeys",
-      "id": "RunKey|HKCU:\\...\\Run|svc_update",
-      "current": {
-        "location": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-        "name": "svc_update",
-        "command": "C:\\Users\\Public\\svc_update.exe",
-        "targetPath": "C:\\Users\\Public\\svc_update.exe",
-        "sha256": "A17F...3C",
-        "signature": "Unsigned"
-      }
-    },
-    {
-      "type": "changed",
-      "category": "singleValues",
-      "id": "SingleValue|Winlogon|Shell",
-      "field": "actual",
-      "before": "explorer.exe",
-      "after": "explorer.exe, C:\\Users\\Public\\x.exe"
-    }
-  ]
-}
+```bash
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
-Nagłówek (`scanTime`, `baselineTime`, `changeCount`) daje kontekst: kiedy program działał
-i względem jakiego baselinu liczył różnicę. Alert jest niezmiennym zapisem chwili - niezależnie
-od tego, czy baseline zostanie potem zaktualizowany.
-
-Opcjonalnie: jedna linia do `alerts.log` dla czytania gołym okiem
-(`[2026-10-10 20:21] 2 zmiany: +1 new, ~1 changed`).
+Release dostaje: instalator `AutostartGuard-Setup-<wersja>.exe`, wersję portable
+`.zip` oraz `process_filter.cer`. Driver jest podpisany **certyfikatem testowym**
+— maszyna docelowa musi mieć włączony tryb test signing (robi to instalator).
+Testować wyłącznie na VM ze snapshotem.
 
 ---
 
-## 6. Pliki projektu
+## Układ repozytorium
 
 ```
-baseline.json      - aktualny stan prawdy (snapshot wszystkich źródeł)
-allowlist.json     - zatwierdzone wpisy
-alerts/            - strukturalne diffy, tworzone tylko przy zmianach
-  alert_<timestamp>.json
-alerts.log         - opcjonalny, czytelny log jednoliniowy
+.
+├── README.md                       # ten plik
+├── .github/workflows/
+│   └── build-driver.yml            # CI: build drivera + Release
+├── installer/
+│   └── process_filter.iss          # instalator Inno Setup
+├── docs/
+│   ├── reference.md                # źródła, formaty JSON, mapowanie MITRE
+│   ├── schemat.svg                 # schemat przepływu (etap 1 + etap 2)
+│   ├── testy.md                    # plan testów i wyniki
+│   ├── CI.md                       # opis pipeline, test signing, plan B (EWDK)
+│   └── DRIVER.md                   # etap 2: build, instalacja, użycie drivera
+├── tools/
+│   ├── AutostartGuard.ps1          # skaner (launcher)
+│   ├── AutostartGuard.Core.ps1     # skaner (funkcje, testowalne osobno)
+│   ├── AutostartGuardCtl.ps1       # klient drivera (most etap 1 ↔ etap 2)
+│   ├── sample-alerts/              # przykładowy alert do testu bez drivera
+│   └── tests/
+│       └── AutostartGuard.Tests.ps1
+├── driver.c                        # sterownik (cały)
+├── agctl.h                         # kontrakt kernel ↔ user mode
+├── process_filter.sln
+├── process_filter.vcxproj
+└── process_filter.vcxproj.filters
 ```
+
+Build sterownika wymaga Visual Studio 2022 + WDK; artefakty (`x64/`, `*.sys`,
+`*.obj`, `*.pdb`) nie są wersjonowane — patrz `.gitignore`.
 
 ---
 
-## 7. Zakres etapów
+## Ograniczenia (świadome uproszczenia PoC)
 
-1. **Monitoring (tryb użytkownika, PowerShell)** - enumeracja 6 źródeł, baseline, diff, alerty,
-   powiadomienia. Wersja pierwsza; może być kompilowana do `.exe` (PS2EXE).
-2. **Driver (tryb jądra, później)** - blokowanie: przechwytywanie tworzenia procesów,
-   zatrzymanie podejrzanego programu. Czyta ten sam folder `alerts/`.
+- Dopasowanie reguł w driverze po ścieżce, nie po hashu — zmiana nazwy pliku
+  obchodzi regułę.
+- Brak trwałości reguł po restarcie (w praktyce: zadanie w Harmonogramie).
+- Driver: domyślny deskryptor bezpieczeństwa, brak samoochrony, limity statyczne
+  (64 reguły / 259 znaków).
+
+Pełna lista: `docs/DRIVER.md`, sekcja „Ograniczenia".

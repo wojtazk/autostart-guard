@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1300" font-family="'Segoe UI', Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#14202B"/>
+    </marker>
+    <marker id="arrowMuted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8A8578"/>
+    </marker>
+    <marker id="arrowOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#E8924A"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="1300" fill="#FBFBF8"/>
+  <rect x="0" y="0" width="14" height="1300" fill="#E8924A"/>
+
+  <text x="48" y="44" font-size="26" font-weight="700" fill="#14202B">AutoStart Guard — pelny przeplyw (etap 1 + etap 2)</text>
+  <text x="48" y="70" font-size="15" fill="#4A5568">Monitoring w PowerShellu wykrywa zmiany &#8594; klient wgrywa reguly &#8594; driver blokuje uruchomienie procesu.</text>
+
+  <!-- ====================== ETAP 1 ====================== -->
+  <rect x="120" y="86" width="430" height="30" rx="15" fill="#14202B"/>
+  <text x="140" y="106" font-size="15" font-weight="600" fill="#E8924A">ETAP 1 &#183; MONITORING (tryb uzytkownika)</text>
+
+  <!-- 1 Uruchomienie -->
+  <rect x="350" y="124" width="420" height="50" rx="12" fill="#14202B"/>
+  <text x="560" y="154" font-size="17" font-weight="600" fill="#F4F3EE" text-anchor="middle">1 &#183; Uruchomienie (recznie / harmonogram)</text>
+  <line x1="560" y1="174" x2="560" y2="184" stroke="#14202B" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 2 Enumeracja -->
+  <rect x="350" y="186" width="420" height="156" rx="12" fill="#FFFFFF" stroke="#DDD9CE" stroke-width="1.5"/>
+  <text x="370" y="212" font-size="17" font-weight="600" fill="#C56A1E">2 &#183; Enumeracja 6 zrodel</text>
+  <g font-size="13" fill="#14202B">
+    <rect x="368" y="224" width="182" height="32" rx="7" fill="#F1EFE7"/><text x="459" y="245" text-anchor="middle">Rejestr — Run keys</text>
+    <rect x="570" y="224" width="182" height="32" rx="7" fill="#F1EFE7"/><text x="661" y="245" text-anchor="middle">Shell Folders</text>
+    <rect x="368" y="262" width="182" height="32" rx="7" fill="#F1EFE7"/><text x="459" y="283" text-anchor="middle">Pojedyncze wartosci</text>
+    <rect x="570" y="262" width="182" height="32" rx="7" fill="#F1EFE7"/><text x="661" y="283" text-anchor="middle">Foldery Startup</text>
+    <rect x="368" y="300" width="182" height="32" rx="7" fill="#F1EFE7"/><text x="459" y="321" text-anchor="middle">Uslugi</text>
+    <rect x="570" y="300" width="182" height="32" rx="7" fill="#F1EFE7"/><text x="661" y="321" text-anchor="middle">Harmonogram Zadan</text>
+  </g>
+  <line x1="560" y1="342" x2="560" y2="372" stroke="#14202B" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 3 Budowa stanu -->
+  <rect x="350" y="374" width="420" height="50" rx="12" fill="#FFFFFF" stroke="#DDD9CE" stroke-width="1.5"/>
+  <text x="560" y="404" font-size="16" font-weight="600" fill="#14202B" text-anchor="middle">3 &#183; Budowa aktualnego stanu (wspolny obiekt)</text>
+  <line x1="560" y1="424" x2="560" y2="454" stroke="#14202B" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 4 Diff -->
+  <rect x="350" y="456" width="420" height="50" rx="12" fill="#FFFFFF" stroke="#DDD9CE" stroke-width="1.5"/>
+  <text x="560" y="486" font-size="16" font-weight="600" fill="#14202B" text-anchor="middle">4 &#183; Diff z baseline (new / changed / removed)</text>
+  <line x1="560" y1="506" x2="560" y2="536" stroke="#14202B" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 5 Allowlist -->
+  <rect x="350" y="538" width="420" height="50" rx="12" fill="#FFFFFF" stroke="#DDD9CE" stroke-width="1.5"/>
+  <text x="560" y="568" font-size="16" font-weight="600" fill="#14202B" text-anchor="middle">5 &#183; Filtr allowlist</text>
+  <line x1="560" y1="588" x2="560" y2="610" stroke="#14202B" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- decyzja -->
+  <polygon points="560,612 680,654 560,696 440,654" fill="#14202B"/>
+  <text x="560" y="650" font-size="14" font-weight="600" fill="#F4F3EE" text-anchor="middle">Zmiany poza</text>
+  <text x="560" y="668" font-size="14" font-weight="600" fill="#F4F3EE" text-anchor="middle">allowlista?</text>
+
+  <!-- stores -->
+  <path d="M840,453 a120,11 0 0 1 240,0 v44 a120,11 0 0 1 -240,0 z" fill="#E7EDE9" stroke="#C7CFC9" stroke-width="1.5"/>
+  <path d="M840,453 a120,11 0 0 0 240,0" fill="none" stroke="#C7CFC9" stroke-width="1.5"/>
+  <text x="960" y="483" font-size="15" font-weight="600" fill="#14202B" text-anchor="middle" font-family="monospace">baseline.json</text>
+  <line x1="840" y1="481" x2="772" y2="481" stroke="#8A8578" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrowMuted)"/>
+  <text x="806" y="474" font-size="11" fill="#8A8578" text-anchor="middle">czyta</text>
+
+  <path d="M840,535 a120,11 0 0 1 240,0 v44 a120,11 0 0 1 -240,0 z" fill="#E7EDE9" stroke="#C7CFC9" stroke-width="1.5"/>
+  <path d="M840,535 a120,11 0 0 0 240,0" fill="none" stroke="#C7CFC9" stroke-width="1.5"/>
+  <text x="960" y="565" font-size="15" font-weight="600" fill="#14202B" text-anchor="middle" font-family="monospace">allowlist.json</text>
+  <line x1="840" y1="563" x2="772" y2="563" stroke="#8A8578" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrowMuted)"/>
+  <text x="806" y="556" font-size="11" fill="#8A8578" text-anchor="middle">czyta</text>
+
+  <!-- NIE -->
+  <path d="M440,654 H250 V710" fill="none" stroke="#14202B" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="400" y="646" font-size="13" font-weight="600" fill="#4A5568">NIE</text>
+  <rect x="140" y="712" width="220" height="48" rx="12" fill="#FFFFFF" stroke="#DDD9CE" stroke-width="1.5"/>
+  <text x="250" y="735" font-size="14.5" font-weight="600" fill="#14202B" text-anchor="middle">Brak zmian — koniec</text>
+  <text x="250" y="752" font-size="11.5" fill="#4A5568" text-anchor="middle">bez tworzenia pliku</text>
+
+  <!-- TAK -->
+  <path d="M560,696 V726" fill="none" stroke="#14202B" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="575" y="716" font-size="13" font-weight="600" fill="#C56A1E">TAK</text>
+
+  <!-- alert box (bridge) -->
+  <rect x="350" y="728" width="420" height="58" rx="12" fill="#E8924A"/>
+  <text x="560" y="752" font-size="16" font-weight="700" fill="#14202B" text-anchor="middle">Zapis alertu</text>
+  <text x="560" y="772" font-size="13" fill="#2E2016" text-anchor="middle" font-family="monospace">alerts/alert_&lt;timestamp&gt;.json</text>
+
+  <!-- powiadomienie -->
+  <line x1="770" y1="757" x2="812" y2="757" stroke="#14202B" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="814" y="731" width="196" height="52" rx="12" fill="#FFFFFF" stroke="#DDD9CE" stroke-width="1.5"/>
+  <text x="912" y="762" font-size="15" font-weight="600" fill="#14202B" text-anchor="middle">Powiadomienie</text>
+
+  <!-- ====================== ETAP 2 ====================== -->
+  <rect x="120" y="808" width="300" height="30" rx="15" fill="#14202B"/>
+  <text x="140" y="828" font-size="15" font-weight="600" fill="#E8924A">ETAP 2 &#183; BLOKOWANIE</text>
+
+  <!-- most: alert -> klient -->
+  <path d="M560,786 V850" fill="none" stroke="#E8924A" stroke-width="2.5" marker-end="url(#arrowOrange)"/>
+  <text x="575" y="822" font-size="12" fill="#C56A1E" font-family="monospace">alerts/*.json</text>
+
+  <!-- klient user mode -->
+  <rect x="330" y="852" width="460" height="64" rx="12" fill="#FFFFFF" stroke="#C56A1E" stroke-width="2"/>
+  <text x="560" y="878" font-size="16" font-weight="600" fill="#14202B" text-anchor="middle">AutostartGuardCtl.ps1 &#183; tryb uzytkownika</text>
+  <text x="560" y="900" font-size="13" fill="#4A5568" text-anchor="middle">parsuje alerty, wyciaga targetPath, odsiewa procesy chronione</text>
+
+  <!-- granica user/kernel -->
+  <line x1="150" y1="950" x2="1060" y2="950" stroke="#8A8578" stroke-width="1.5" stroke-dasharray="8 5"/>
+  <text x="156" y="944" font-size="12" fill="#8A8578">tryb uzytkownika</text>
+  <text x="156" y="968" font-size="12" fill="#8A8578">tryb jadra</text>
+
+  <!-- IOCTL crossing -->
+  <path d="M560,916 V988" fill="none" stroke="#14202B" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="575" y="946" font-size="12" fill="#14202B" font-family="monospace">DeviceIoControl &#183; IOCTL_AG_ADD_RULE / SET_MODE</text>
+
+  <!-- driver kernel -->
+  <rect x="330" y="990" width="460" height="64" rx="12" fill="#14202B"/>
+  <text x="560" y="1016" font-size="16" font-weight="700" fill="#E8924A" text-anchor="middle">process_filter.sys &#183; tryb jadra</text>
+  <text x="560" y="1038" font-size="13" fill="#BFD0DB" text-anchor="middle">plaska lista regul w pamieci jadra (bez JSON, bez I/O)</text>
+  <line x1="560" y1="1054" x2="560" y2="1084" stroke="#14202B" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- callback -->
+  <rect x="330" y="1086" width="460" height="58" rx="12" fill="#25384A"/>
+  <text x="560" y="1110" font-size="15" font-weight="600" fill="#F4F3EE" text-anchor="middle" font-family="monospace">PsSetCreateProcessNotifyRoutineEx</text>
+  <text x="560" y="1130" font-size="13" fill="#BFD0DB" text-anchor="middle">callback przy kazdym tworzeniu procesu</text>
+  <line x1="560" y1="1144" x2="560" y2="1174" stroke="#14202B" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- enforce result -->
+  <rect x="330" y="1176" width="460" height="66" rx="12" fill="#A33A2C"/>
+  <text x="560" y="1203" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">tryb ENFORCE &#8594; STATUS_ACCESS_DENIED</text>
+  <text x="560" y="1225" font-size="14" fill="#F3D9D4" text-anchor="middle">proces NIE wstaje</text>
+
+  <!-- notka bezpiecznika -->
+  <text x="814" y="1198" font-size="12.5" fill="#4A5568">tryb AUDIT &#8594; tylko log,</text>
+  <text x="814" y="1216" font-size="12.5" fill="#4A5568">proces przechodzi</text>
+  <text x="814" y="1238" font-size="12.5" fill="#C56A1E">procesy krytyczne &#8594;</text>
+  <text x="814" y="1256" font-size="12.5" fill="#C56A1E">nigdy nie blokowane</text>
+</svg>

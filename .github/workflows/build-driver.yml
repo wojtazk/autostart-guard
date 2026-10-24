@@ -1,0 +1,154 @@
+name: build-driver
+
+# Buduje sterownik (etap 2) na runnerze Windows, podpisuje go certyfikatem
+# testowym, pakuje instalator Inno Setup i - przy pushu taga vX.Y.Z - wrzuca
+# artefakty do GitHub Releases.
+#
+# UWAGA: driver jest podpisany certyfikatem TESTOWYM generowanym w locie przy
+# każdym buildzie. Żeby go załadować, maszyna docelowa musi być w trybie
+# test signing (bcdedit /set testsigning on + restart). Szczegóły: docs/CI.md.
+
+on:
+  push:
+    tags:
+      - 'v*'           # np. v1.0.0  -> tworzy Release
+  workflow_dispatch:   # ręczne uruchomienie (bez Release, tylko artefakty)
+
+permissions:
+  contents: write      # potrzebne do utworzenia Release
+
+env:
+  SDK_VERSION: '10.0.22621.0'   # musi zgadzać się z WindowsTargetPlatformVersion w .vcxproj
+  CONFIG: Release
+  PLATFORM: x64
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --- Szybki gate: testy skanera (etap 1), zanim zabierzemy się za driver ---
+      - name: Testy PowerShell (etap 1)
+        shell: pwsh
+        run: pwsh -File tools/tests/AutostartGuard.Tests.ps1
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      # --- WDK + integracja z Visual Studio (toolset WindowsKernelModeDriver10.0) ---
+      # Chocolatey instaluje WDK dla Win11 22H2 (10.0.22621) wraz z rozszerzeniem
+      # VS. Jeśli kiedyś zawiedzie integracja toolsetu, patrz docs/CI.md -> EWDK.
+      - name: Install WDK (10.0.22621)
+        shell: pwsh
+        run: |
+          choco install windowsdriverkit11 -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "Instalacja WDK nie powiodła się" }
+
+      - name: Build driver (Release|x64, bez podpisu MSBuild)
+        shell: pwsh
+        run: |
+          msbuild process_filter.vcxproj `
+            /t:Build `
+            /p:Configuration=$env:CONFIG `
+            /p:Platform=$env:PLATFORM `
+            /p:WindowsTargetPlatformVersion=$env:SDK_VERSION `
+            /p:SignMode=Off `
+            /m
+          if ($LASTEXITCODE -ne 0) { throw "Build sterownika nie powiódł się" }
+
+      # Podpisujemy sami, własnym certyfikatem testowym - dzięki temu mamy .cer
+      # do zapakowania w instalatorze (użytkownik może go zaufać).
+      - name: Generate test certificate and sign .sys
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          # 1. Znajdź zbudowany .sys (output linkera w x64\Release\).
+          $sys = Get-ChildItem -Recurse -Filter 'process_filter.sys' |
+                 Where-Object { $_.FullName -match "\\$env:PLATFORM\\$env:CONFIG\\process_filter\.sys$" } |
+                 Select-Object -First 1
+          if (-not $sys) {
+            $sys = Get-ChildItem -Recurse -Filter 'process_filter.sys' | Select-Object -First 1
+          }
+          if (-not $sys) { throw "Nie znaleziono process_filter.sys po buildzie" }
+          Write-Host "Sterownik: $($sys.FullName)"
+
+          # 2. Certyfikat testowy do podpisu kodu.
+          $cert = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject 'CN=AutostartGuard Test Cert' `
+            -CertStoreLocation 'Cert:\CurrentUser\My' `
+            -KeyUsage DigitalSignature `
+            -KeyExportPolicy Exportable `
+            -HashAlgorithm SHA256
+
+          # 3. signtool z zainstalowanego SDK.
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\$env:SDK_VERSION\x64\signtool.exe" -ErrorAction SilentlyContinue
+          if (-not $signtool) {
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+                        Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } | Select-Object -First 1
+          }
+          if (-not $signtool) { throw "Nie znaleziono signtool.exe" }
+
+          & $signtool.FullName sign /fd sha256 /a /sha1 $cert.Thumbprint /t http://timestamp.digicert.com $sys.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Podpisywanie nie powiodło się" }
+          & $signtool.FullName verify /pa /v $sys.FullName
+
+          # 4. Przygotuj folder dystrybucji (dla instalatora i zipa).
+          New-Item -ItemType Directory -Force -Path dist, dist\tools, dist\docs | Out-Null
+          Copy-Item $sys.FullName dist\process_filter.sys
+          Export-Certificate -Cert $cert -FilePath dist\process_filter.cer | Out-Null
+          Copy-Item tools\*.ps1 dist\tools\
+          Copy-Item -Recurse tools\sample-alerts dist\tools\
+          Copy-Item docs\DRIVER.md, docs\reference.md, docs\testy.md dist\docs\
+          Copy-Item README.md dist\
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $ver = if ($env:GITHUB_REF -like 'refs/tags/*') { $env:GITHUB_REF -replace 'refs/tags/v?','' } else { '0.0.0-dev' }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            /DMyAppVersion=$ver `
+            /DSrcDir=dist `
+            installer\process_filter.iss
+          if ($LASTEXITCODE -ne 0) { throw "Budowa instalatora nie powiodła się" }
+
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          $ver = if ($env:GITHUB_REF -like 'refs/tags/*') { $env:GITHUB_REF -replace 'refs/tags/v?','' } else { '0.0.0-dev' }
+          Compress-Archive -Path dist\* -DestinationPath "AutostartGuard-$ver-portable.zip" -Force
+
+      - name: Upload build artifacts (every run)
+        uses: actions/upload-artifact@v4
+        with:
+          name: autostart-guard-build
+          path: |
+            dist/process_filter.sys
+            dist/process_filter.cer
+            installer/Output/*.exe
+            AutostartGuard-*-portable.zip
+          if-no-files-found: error
+
+      - name: Create GitHub Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: AutostartGuard ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            Automatyczny build sterownika (etap 2) + instalator.
+
+            > Driver podpisany certyfikatem **testowym** (dołączony `process_filter.cer`).
+            > Wymaga trybu test signing na maszynie docelowej. Szczegóły: `docs/CI.md`.
+            > Testować wyłącznie na maszynie wirtualnej ze snapshotem.
+          files: |
+            installer/Output/*.exe
+            AutostartGuard-*-portable.zip
+            dist/process_filter.cer

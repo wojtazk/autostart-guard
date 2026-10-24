@@ -1,0 +1,63 @@
+{
+  "scanTime": "2026-10-10T20:21:05+02:00",
+  "hostname": "DESKTOP-WK",
+  "baselineTime": "2026-10-09T18:00:00+02:00",
+  "changeCount": 4,
+  "changes": [
+    {
+      "type": "new",
+      "category": "runKeys",
+      "id": "RunKey|HKCU:\\...\\Run|svc_update",
+      "current": {
+        "location": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+        "name": "svc_update",
+        "command": "C:\\Users\\Public\\svc_update.exe",
+        "targetPath": "C:\\Users\\Public\\svc_update.exe",
+        "sha256": "A17F3C",
+        "signature": "Unsigned"
+      }
+    },
+    {
+      "type": "new",
+      "category": "startupFolders",
+      "id": "StartupFolder|user|evil.lnk",
+      "current": {
+        "location": "C:\\Users\\wk\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup",
+        "name": "evil.lnk",
+        "command": "C:\\Users\\wk\\AppData\\Local\\Temp\\dropper.exe",
+        "targetPath": "C:\\Users\\wk\\AppData\\Local\\Temp\\dropper.exe",
+        "sha256": "B29D01",
+        "signature": "Unsigned"
+      }
+    },
+    {
+      "type": "new",
+      "category": "services",
+      "id": "Service|FakeSpooler",
+      "current": {
+        "location": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\FakeSpooler",
+        "name": "FakeSpooler",
+        "command": "C:\\Windows\\System32\\svchost.exe -k netsvcs",
+        "targetPath": "C:\\Windows\\System32\\svchost.exe",
+        "sha256": "C3D49B",
+        "signature": "Microsoft Windows"
+      }
+    },
+    {
+      "type": "removed",
+      "category": "runKeys",
+      "id": "RunKey|HKCU:\\...\\Run|OldThing",
+      "previous": {
+        "targetPath": "C:\\Users\\Public\\old_thing.exe"
+      }
+    },
+    {
+      "type": "changed",
+      "category": "singleValues",
+      "id": "SingleValue|Winlogon|Shell",
+      "field": "actual",
+      "before": "explorer.exe",
+      "after": "explorer.exe, C:\\Users\\Public\\x.exe"
+    }
+  ]
+}

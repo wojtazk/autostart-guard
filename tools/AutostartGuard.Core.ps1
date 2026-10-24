@@ -145,6 +145,133 @@ function Test-Admin {
     catch { return $false }
 }
 
+# Powiadomienie na pulpicie (dymek w zasobniku; na Win10/11 wyświetla się jako
+# toast). Działa tylko w interaktywnej sesji użytkownika - dlatego zadanie w
+# Harmonogramie musi być "przy logowaniu", w kontekście użytkownika, nie SYSTEM.
+# Nigdy nie wywala skanu - przy braku GUI po prostu nic nie pokazuje.
+function Show-AgNotification {
+    param([string] $Title, [string] $Message)
+    try {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+        Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+        $ni = New-Object System.Windows.Forms.NotifyIcon
+        $ni.Icon = [System.Drawing.SystemIcons]::Warning
+        $ni.Visible = $true
+        $ni.ShowBalloonTip(10000, $Title, $Message, [System.Windows.Forms.ToolTipIcon]::Warning)
+        Start-Sleep -Seconds 8
+        $ni.Dispose()
+    }
+    catch {
+        Write-Warning "Nie udalo sie pokazac powiadomienia: $($_.Exception.Message)"
+    }
+}
+
+# Interaktywne okno decyzji dla nowego wpisu autostartu.
+# Zwraca: 'block' (Zablokuj) albo 'run' (Uruchom).
+# Okna NIE da się zamknąć bez wyboru - X / Alt+F4 są blokowane, dopóki
+# użytkownik nie kliknie Zablokuj albo Uruchom (pętla). Przycisk 'Pokaż'
+# otwiera plik alertu w Notatniku i NIE kończy decyzji.
+# Brak GUI (sesja bez pulpitu) -> zwraca 'block' (nie ma kogo zapytać).
+function Show-AgDecision {
+    param([string] $EntryName, [string] $TargetPath, [string] $AlertFile)
+    try {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+        Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+    }
+    catch { return 'block' }
+
+    $script:agChoice = $null     # dopóki null -> brak decyzji, okno się nie zamknie
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = 'AutostartGuard - nowy wpis autostartu'
+    $form.Size = New-Object System.Drawing.Size(540, 230)
+    $form.StartPosition = 'CenterScreen'
+    $form.TopMost = $true
+    $form.FormBorderStyle = 'FixedDialog'
+    $form.MaximizeBox = $false; $form.MinimizeBox = $false
+    $form.ControlBox = $false    # bez przycisku X w pasku tytułu
+
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Location = New-Object System.Drawing.Point(16, 16)
+    $lbl.Size = New-Object System.Drawing.Size(500, 120)
+    $lbl.Text = "Wykryto NOWY wpis autostartu (poza baseline i allowlistą):`r`n`r`n$EntryName`r`n$TargetPath`r`n`r`nWybierz - okna nie da się zamknąć bez decyzji."
+    $form.Controls.Add($lbl)
+
+    $bBlock = New-Object System.Windows.Forms.Button
+    $bBlock.Text = 'Zablokuj'; $bBlock.Location = New-Object System.Drawing.Point(20, 150); $bBlock.Size = New-Object System.Drawing.Size(150, 34)
+    $bBlock.Add_Click({ $script:agChoice = 'block'; $form.Close() })
+
+    $bRun = New-Object System.Windows.Forms.Button
+    $bRun.Text = 'Uruchom'; $bRun.Location = New-Object System.Drawing.Point(185, 150); $bRun.Size = New-Object System.Drawing.Size(150, 34)
+    $bRun.Add_Click({ $script:agChoice = 'run'; $form.Close() })
+
+    $bShow = New-Object System.Windows.Forms.Button
+    $bShow.Text = 'Pokaż'; $bShow.Location = New-Object System.Drawing.Point(350, 150); $bShow.Size = New-Object System.Drawing.Size(150, 34)
+    $bShow.Add_Click({ if ($AlertFile -and (Test-Path -LiteralPath $AlertFile)) { Start-Process notepad.exe $AlertFile } }.GetNewClosure())
+
+    # Blokuj zamknięcie (Alt+F4 itp.), dopóki nie ma decyzji.
+    $form.Add_FormClosing({ param($s, $e) if ($null -eq $script:agChoice) { $e.Cancel = $true } })
+
+    $form.Controls.AddRange(@($bBlock, $bRun, $bShow))
+    $form.AcceptButton = $bBlock
+    [void]$form.ShowDialog()
+    $form.Dispose()
+    if ($null -eq $script:agChoice) { return 'block' }   # na wszelki wypadek
+    return $script:agChoice
+}
+
+# --- Allowlist (odczyt/zapis) -------------------------------------- #
+
+function Get-AgAllowed {
+    param([string] $AllowFile)
+    if (-not (Test-Path -LiteralPath $AllowFile)) { return @() }
+    try {
+        $j = Get-Content -LiteralPath $AllowFile -Raw | ConvertFrom-Json
+        if (@($j.PSObject.Properties.Name) -contains 'allowed') { return @($j.allowed) }
+    }
+    catch { Write-Warning "Niepoprawny allowlist.json - ignoruję: $($_.Exception.Message)" }
+    return @()
+}
+
+function Add-AgAllowEntry {
+    param([string] $AllowFile, [string] $Id, [string] $Note = '')
+    $existing = @(Get-AgAllowed -AllowFile $AllowFile)
+    if ($existing | Where-Object { $_.id -eq $Id }) { return }
+    $existing += [pscustomobject]@{ id = $Id; matchBy = 'id'; note = $Note }
+    @{ allowed = $existing } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $AllowFile -Encoding UTF8
+}
+
+# --- Zapis alertu (wspólny dla Scan i Watch) ----------------------- #
+
+function Write-AgAlert {
+    param($Changes, $Current, $Baseline, [string] $AlertsDir, [string] $DataPath)
+    if (-not (Test-Path -LiteralPath $AlertsDir)) { New-Item -ItemType Directory -Path $AlertsDir -Force | Out-Null }
+    $now = Get-Date
+    $alert = [ordered]@{
+        scanTime     = $now.ToString('o')
+        hostname     = $Current.hostname
+        baselineTime = $Baseline.generatedAt
+        changeCount  = @($Changes).Count
+        changes      = $Changes
+    }
+    $stamp = $now.ToString('yyyy-MM-dd_HH-mm-ss')
+    $file = Join-Path $AlertsDir "alert_$stamp.json"
+    $alert | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath $file -Encoding UTF8
+    $byType = @($Changes) | Group-Object type | ForEach-Object { "$($_.Name)=$($_.Count)" }
+    Add-Content -LiteralPath (Join-Path $DataPath 'alerts.log') -Value "[$($now.ToString('yyyy-MM-dd HH:mm:ss'))] $(@($Changes).Count) zmian: $($byType -join ', ')"
+    return $file
+}
+
+# Wyłuskuje targetPath ze zmiany typu 'new' (bezpiecznie, pod StrictMode).
+function Get-ChangeTarget {
+    param($Change)
+    if (@($Change.PSObject.Properties.Name) -notcontains 'current') { return $null }
+    $cur = $Change.current
+    if ($null -eq $cur) { return $null }
+    if (@($cur.PSObject.Properties.Name) -notcontains 'targetPath') { return $null }
+    return $cur.targetPath
+}
+
 function Get-FileFacts {
     param([string] $TargetPath)
     $result = [ordered]@{ sha256 = $null; signature = 'Unknown' }

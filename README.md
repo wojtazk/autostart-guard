@@ -1,6 +1,7 @@
 # Anioł stróż autostartu (AutostartGuard)
 
-[![build-driver](https://github.com/wojtazk/autostart-guard/actions/workflows/build-driver.yml/badge.svg)](https://github.com/wojtazk/autostart-guard/actions/workflows/build-driver.yml)
+<!-- Podmień <owner>/<repo> na swoje repozytorium, aby badge działał -->
+[![build-driver](https://github.com/<owner>/<repo>/actions/workflows/build-driver.yml/badge.svg)](https://github.com/<owner>/<repo>/actions/workflows/build-driver.yml)
 
 Narzędzie monitorujące automatyczne uruchamianie aplikacji w Windows i blokujące
 podejrzane wpisy. Projekt dzieli się na dwa etapy:
@@ -26,9 +27,9 @@ podejrzane wpisy. Projekt dzieli się na dwa etapy:
 │   → baseline.json                 │     │   procesu                   │
 │   → diff → alerts/*.json          │     │   płaska lista reguł        │
 └───────────────┬───────────────────┘     └──────────────▲──────────────┘
-                │ alerts/*.json                          │ IOCTL (DeviceIoControl)
-                │                                        │
-                └──────────► AutostartGuardCtl.ps1 ──────┘
+                │ alerts/*.json                           │ IOCTL (DeviceIoControl)
+                │                                          │
+                └──────────► AutostartGuardCtl.ps1 ────────┘
                              czyta alerty, wyciąga targetPath,
                              wgrywa reguły do drivera
 ```
@@ -57,40 +58,55 @@ Szczegółowy opis kluczy, formatów `baseline.json` / `allowlist.json` / alert�
 
 ---
 
+## Jak to działa przy autostarcie
+
+Po zainstalowaniu i zbudowaniu baseline cały scenariusz dzieje się sam:
+
+1. **Przy starcie systemu** — driver ładuje się jako usługa jądra, a zadanie
+   `Sync` wgrywa zapisaną listę blokad i włącza **enforce** (blokowanie aktywne
+   jeszcze przed logowaniem).
+2. **Przy logowaniu** — zadanie `Watch` skanuje autostart względem baseline
+   i allowlisty. **Każdy nowy wpis (spoza baseline i allowlisty) jest domyślnie
+   blokowany**, a Ty dostajesz okno z wyborem:
+   - **Zablokuj** — zostaje zablokowany (reguła trafia do drivera),
+   - **Uruchom** — dodaj do allowlisty i uruchom teraz (nie będzie już blokowany),
+   - **Pokaż** — otwiera plik różnicy (`alert_*.json`) w Notatniku.
+
+Driver egzekwuje decyzje: blokuje tworzenie procesu dla ścieżek z listy blokad.
+
 ## Szybki start
 
-### Etap 1 — monitoring (wystarczy PowerShell 5.1+ / 7+, do pełnego skanu admin)
+### Zainstaluj i zbuduj baseline (VM w trybie test signing, jako administrator)
+
+Pobierz instalator z [**Releases**](../../releases) i uruchom. Instalator sam
+rejestruje usługę sterownika oraz zadania (logowanie / start systemu), a dane
+trzyma w `<folder programu>\data`. Został jeden krok — **baseline**:
 
 ```powershell
-cd tools
-
-# 1. Zbuduj baseline (stan odniesienia)
+cd "C:\Program Files\AutostartGuard\tools"
 .\AutostartGuard.ps1 -Action Baseline
-
-# 2. Skanuj — alert powstaje tylko, jeśli coś się zmieniło
-.\AutostartGuard.ps1 -Action Scan
-#    → ..\autostart-guard\alerts\alert_<timestamp>.json
 ```
 
-Folder roboczy (`baseline.json`, `allowlist.json`, `alerts/`) domyślnie
-`.\autostart-guard`; zmienia go `-DataPath`.
+Od teraz działa automatycznie (patrz „Jak to działa przy autostarcie").
+Build lokalny drivera i scenariusz demonstracyjny: [`docs/DRIVER.md`](docs/DRIVER.md).
 
-### Etap 2 — blokowanie (VM w trybie test signing, jako administrator)
-
-Gotowy driver + instalator pobierzesz z [**Releases**](../../releases) (budowane
-automatycznie — patrz niżej). Build lokalny, instalacja i pełny scenariusz
-demonstracyjny: [`docs/DRIVER.md`](docs/DRIVER.md).
+### Ręcznie / do testów
 
 ```powershell
 cd tools
 
-# podgląd, co zostałoby wgrane (bez drivera, bez admina)
-.\AutostartGuardCtl.ps1 -Action Load -AlertsPath ..\autostart-guard\alerts -DryRun
+# jednorazowy skan z powiadomieniem (to samo, co robi zadanie Watch)
+.\AutostartGuard.ps1 -Action Watch -Notify
 
-# wgranie reguł i włączenie blokowania
-.\AutostartGuardCtl.ps1 -Action Load -AlertsPath ..\autostart-guard\alerts
-.\AutostartGuardCtl.ps1 -Action Mode -Mode enforce -Force
+# tylko wykrywanie, bez blokowania
+.\AutostartGuard.ps1 -Action Scan
+
+# rejestracja zadań ręcznie (gdy nie używasz instalatora)
+.\Install-Tasks.ps1
 ```
+
+Folder roboczy (`baseline.json`, `allowlist.json`, `alerts/`, `blocked-paths.txt`)
+domyślnie `<folder programu>\data`; zmienia go `-DataPath`.
 
 ---
 
@@ -143,9 +159,10 @@ Testować wyłącznie na VM ze snapshotem.
 │   ├── CI.md                       # opis pipeline, test signing, plan B (EWDK)
 │   └── DRIVER.md                   # etap 2: build, instalacja, użycie drivera
 ├── tools/
-│   ├── AutostartGuard.ps1          # skaner (launcher)
-│   ├── AutostartGuard.Core.ps1     # skaner (funkcje, testowalne osobno)
-│   ├── AutostartGuardCtl.ps1       # klient drivera (most etap 1 ↔ etap 2)
+│   ├── AutostartGuard.ps1          # skaner + Watch (launcher)
+│   ├── AutostartGuard.Core.ps1     # funkcje skanera + GUI decyzji (testowalne)
+│   ├── AutostartGuardCtl.ps1       # klient drivera (Load / Sync / Mode / Status)
+│   ├── Install-Tasks.ps1           # rejestracja zadań: Watch (logon) + Sync (boot)
 │   ├── sample-alerts/              # przykładowy alert do testu bez drivera
 │   └── tests/
 │       └── AutostartGuard.Tests.ps1

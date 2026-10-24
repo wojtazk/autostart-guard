@@ -42,6 +42,10 @@ Name: "testsigning"; \
   Description: "Włącz tryb test signing (WYMAGA restartu - driver testowy inaczej się nie załaduje)"; \
   GroupDescription: "Konfiguracja systemu:"; Flags: checkedonce
 
+[Dirs]
+; Folder danych - baseline.json, allowlist.json, alerts/, blocked-paths.txt.
+Name: "{app}\data"
+
 [Files]
 Source: "{#SrcDir}\process_filter.sys"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SrcDir}\process_filter.cer"; DestDir: "{app}"; Flags: ignoreversion
@@ -56,15 +60,21 @@ Filename: "{sys}\certutil.exe"; Parameters: "-f -addstore Root ""{app}\process_f
 Filename: "{sys}\certutil.exe"; Parameters: "-f -addstore TrustedPublisher ""{app}\process_filter.cer"""; \
   StatusMsg: "Importowanie certyfikatu (TrustedPublisher)..."; Flags: runhidden
 
-; 2. Zarejestruj usługę jądra (nie startujemy jej - wymaga test signing + restartu).
-Filename: "{sys}\sc.exe"; Parameters: "create AutostartGuard type= kernel start= demand binPath= ""{app}\process_filter.sys"""; \
+; 2. Zarejestruj usługę jądra (start automatyczny - rezydentny przy starcie systemu).
+Filename: "{sys}\sc.exe"; Parameters: "create AutostartGuard type= kernel start= auto binPath= ""{app}\process_filter.sys"""; \
   StatusMsg: "Rejestrowanie usługi sterownika..."; Flags: runhidden
 
-; 3. Opcjonalnie włącz test signing.
+; 3. Zarejestruj zadania: Watch (przy logowaniu) i Sync (przy starcie systemu).
+Filename: "powershell.exe"; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\Install-Tasks.ps1"" -DataPath ""{app}\data"""; \
+  StatusMsg: "Rejestrowanie zadań (logowanie / start systemu)..."; Flags: runhidden
+
+; 4. Opcjonalnie włącz test signing.
 Filename: "{sys}\bcdedit.exe"; Parameters: "/set testsigning on"; Tasks: testsigning; \
   StatusMsg: "Włączanie trybu test signing..."; Flags: runhidden
 
 [UninstallRun]
+Filename: "powershell.exe"; Parameters: "-NoProfile -Command ""Unregister-ScheduledTask -TaskName 'AutostartGuard Watch (logon)' -Confirm:$false -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName 'AutostartGuard Sync (boot)' -Confirm:$false -ErrorAction SilentlyContinue"""; Flags: runhidden; RunOnceId: "DelAgTasks"
 Filename: "{sys}\sc.exe"; Parameters: "stop AutostartGuard";   Flags: runhidden; RunOnceId: "StopAgSvc"
 Filename: "{sys}\sc.exe"; Parameters: "delete AutostartGuard"; Flags: runhidden; RunOnceId: "DelAgSvc"
 
@@ -76,15 +86,15 @@ begin
   if CurStep = ssPostInstall then
   begin
     Msg := 'Instalacja zakończona.' + #13#10#13#10;
+    Msg := Msg + 'Zarejestrowano: usługę sterownika oraz zadania Watch (logowanie) i Sync (start systemu).' + #13#10#13#10;
     if WizardIsTaskSelected('testsigning') then
       Msg := Msg + 'Włączono test signing - URUCHOM PONOWNIE komputer, aby zaczął obowiązywać.' + #13#10#13#10;
-    Msg := Msg + 'Po restarcie, z konsoli jako administrator:' + #13#10 +
-           '  sc.exe start AutostartGuard' + #13#10#13#10 +
-           'Wgranie reguł z alertów i tryb blokowania:' + #13#10 +
+    Msg := Msg + 'POZOSTAŁ JEDEN KROK - zbuduj baseline (jako administrator):' + #13#10 +
            '  cd "' + ExpandConstant('{app}') + '\tools"' + #13#10 +
-           '  .\AutostartGuardCtl.ps1 -Action Load -AlertsPath <folder z alertami>' + #13#10 +
-           '  .\AutostartGuardCtl.ps1 -Action Mode -Mode enforce -Force' + #13#10#13#10 +
-           'UWAGA: tryb enforce realnie blokuje procesy. Testuj na maszynie wirtualnej ze snapshotem.';
+           '  .\AutostartGuard.ps1 -Action Baseline' + #13#10#13#10 +
+           'Od teraz przy każdym logowaniu nowe wpisy autostartu (spoza baseline' + #13#10 +
+           'i allowlisty) są domyślnie blokowane, z oknem Zablokuj / Uruchom / Pokaż.' + #13#10#13#10 +
+           'UWAGA: enforce realnie blokuje procesy. Testuj na maszynie wirtualnej ze snapshotem.';
     MsgBox(Msg, mbInformation, MB_OK);
   end;
 end;

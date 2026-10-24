@@ -43,13 +43,16 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('Status', 'Load', 'Clear', 'Mode')]
+    [ValidateSet('Status', 'Load', 'Clear', 'Mode', 'Sync')]
     [string] $Action,
 
     [string] $AlertsPath = (Join-Path (Get-Location) 'alerts'),
 
     [ValidateSet('off', 'audit', 'enforce')]
     [string] $Mode,
+
+    # Dla akcji Sync: plik z blokowanymi sciezkami (jedna na linie, # = komentarz).
+    [string] $BlockedFile,
 
     [switch] $Force,
 
@@ -360,6 +363,41 @@ try {
 
             Write-Host ''
             Write-Host 'Wgrano. Stan drivera:'
+            Get-AgStats -Handle $handle | Format-List
+        }
+
+        'Sync' {
+            # Zrodlo prawdy = plik blocked-paths.txt. Czyscimy driver, wgrywamy
+            # cala liste i WLACZAMY enforce (blokowanie domyslnie wlaczone).
+            if (-not $BlockedFile) { $BlockedFile = Join-Path (Get-Location) 'blocked-paths.txt' }
+
+            $paths = @()
+            if (Test-Path -LiteralPath $BlockedFile) {
+                $paths = @(Get-Content -LiteralPath $BlockedFile |
+                        ForEach-Object { $_.Trim() } |
+                        Where-Object { $_ -and -not $_.StartsWith('#') } |
+                        Select-Object -Unique)
+            }
+
+            # Odsiewamy procesy chronione (driver i tak ich nie zablokuje).
+            $final = @()
+            foreach ($p in $paths) {
+                $leaf = [IO.Path]::GetFileName($p)
+                if ($leaf -and $ProtectedNames -contains $leaf.ToLowerInvariant()) {
+                    Write-Warning "Pomijam proces systemowy: $p"; continue
+                }
+                if ($final.Count -ge $AG_MAX_RULES) { Write-Warning "Limit $AG_MAX_RULES regul - reszta pominieta."; break }
+                $final += $p
+            }
+
+            Invoke-AgIoctl -Handle $handle -Code $IOCTL_AG_CLEAR_RULES | Out-Null
+            foreach ($t in $final) { Add-AgRule -Handle $handle -Path $t }
+
+            # Enforce - o to chodzi w Watch (blokowanie domyslnie aktywne).
+            $buffer = [BitConverter]::GetBytes([uint32] $ModeValues['enforce'])
+            Invoke-AgIoctl -Handle $handle -Code $IOCTL_AG_SET_MODE -InBuffer $buffer | Out-Null
+
+            Write-Host "Zsynchronizowano $($final.Count) regul, tryb ENFORCE."
             Get-AgStats -Handle $handle | Format-List
         }
     }

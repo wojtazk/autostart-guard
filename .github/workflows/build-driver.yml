@@ -153,9 +153,12 @@ jobs:
         shell: pwsh
         run: |
           $ver = if ($env:GITHUB_REF -like 'refs/tags/*') { $env:GITHUB_REF -replace 'refs/tags/v?','' } else { '0.0.0-dev' }
+          # ISCC rozwiązuje względne Source wg katalogu .iss (installer\), a dist
+          # leży w korzeniu repo - dlatego przekazujemy ścieżkę ABSOLUTNĄ.
+          $src = (Resolve-Path dist).Path
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
-            /DMyAppVersion=$ver `
-            /DSrcDir=dist `
+            "/DMyAppVersion=$ver" `
+            "/DSrcDir=$src" `
             installer\process_filter.iss
           if ($LASTEXITCODE -ne 0) { throw "Budowa instalatora nie powiodła się" }
 

@@ -27,9 +27,9 @@ podejrzane wpisy. Projekt dzieli się na dwa etapy:
 │   → baseline.json                 │     │   procesu                   │
 │   → diff → alerts/*.json          │     │   płaska lista reguł        │
 └───────────────┬───────────────────┘     └──────────────▲──────────────┘
-                │ alerts/*.json                           │ IOCTL (DeviceIoControl)
-                │                                          │
-                └──────────► AutostartGuardCtl.ps1 ────────┘
+                │ alerts/*.json                          │ IOCTL (DeviceIoControl)
+                │                                        │
+                └──────────► AutostartGuardCtl.ps1 ──────┘
                              czyta alerty, wyciąga targetPath,
                              wgrywa reguły do drivera
 ```
@@ -85,6 +85,7 @@ trzyma w `<folder programu>\data`. Został jeden krok — **baseline**:
 ```powershell
 cd "C:\Program Files\AutostartGuard\tools"
 .\AutostartGuard.ps1 -Action Baseline
+sc.exe start AutostartGuard
 ```
 
 Od teraz działa automatycznie (patrz „Jak to działa przy autostarcie").
@@ -178,7 +179,7 @@ Build sterownika wymaga Visual Studio 2022 + WDK; artefakty (`x64/`, `*.sys`,
 
 ---
 
-## Ograniczenia (świadome uproszczenia PoC)
+<!-- ## Ograniczenia (świadome uproszczenia PoC)
 
 - Dopasowanie reguł w driverze po ścieżce, nie po hashu — zmiana nazwy pliku
   obchodzi regułę.
@@ -187,3 +188,4 @@ Build sterownika wymaga Visual Studio 2022 + WDK; artefakty (`x64/`, `*.sys`,
   (64 reguły / 259 znaków).
 
 Pełna lista: `docs/DRIVER.md`, sekcja „Ograniczenia".
+-->

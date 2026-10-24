@@ -1,6 +1,5 @@
 # Anioł stróż autostartu (AutostartGuard)
 
-<!-- Podmień <owner>/<repo> na swoje repozytorium, aby badge działał -->
 [![build-driver](https://github.com/wojtazk/autostart-guard/actions/workflows/build-driver.yml/badge.svg)](https://github.com/wojtazk/autostart-guard/actions/workflows/build-driver.yml)
 
 Narzędzie monitorujące automatyczne uruchamianie aplikacji w Windows i blokujące
@@ -22,19 +21,20 @@ podejrzane wpisy. Projekt dzieli się na dwa etapy:
 
 ```
 ┌─ ETAP 1 (user mode) ──────────────┐     ┌─ ETAP 2 (kernel) ───────────┐
-│ AutostartGuard.ps1                │     │ process_filter.sys          │
+│ AutostartGuard.ps1 (Watch)        │     │ process_filter.sys          │
 │   enumeracja 6 źródeł             │     │   callback na tworzenie     │
 │   → baseline.json                 │     │   procesu                   │
 │   → diff → alerts/*.json          │     │   płaska lista reguł        │
+│   → decyzja + blocked-paths.txt   │     │                             │
 └───────────────┬───────────────────┘     └──────────────▲──────────────┘
-                │ alerts/*.json                          │ IOCTL (DeviceIoControl)
+                │ blocked-paths.txt                      │ IOCTL (DeviceIoControl)
                 │                                        │
                 └──────────► AutostartGuardCtl.ps1 ──────┘
-                             czyta alerty, wyciąga targetPath,
-                             wgrywa reguły do drivera
+                             Sync: czyści reguły, wgrywa listę
+                             blokad do drivera i włącza enforce
 ```
 
-Driver świadomie **nie** czyta `alerts/` ani nie parsuje JSON-a (tryb jądra nie
+Driver świadomie **nie** czyta plików ani nie parsuje JSON-a (tryb jądra nie
 ma do tego bibliotek, a operacje na plikach z kontekstu callbacku grożą
 zakleszczeniem). Polityka żyje w user mode, egzekucja w jądrze.
 
@@ -69,8 +69,13 @@ Po zainstalowaniu i zbudowaniu baseline cały scenariusz dzieje się sam:
    i allowlisty. **Każdy nowy wpis (spoza baseline i allowlisty) jest domyślnie
    blokowany**, a Ty dostajesz okno z wyborem:
    - **Zablokuj** — zostaje zablokowany (reguła trafia do drivera),
-   - **Uruchom** — dodaj do allowlisty i uruchom teraz (nie będzie już blokowany),
+   - **Uruchom** — dodaj do allowlisty i uruchom teraz (nie będzie już blokowany);
+     domyślnie przypięte do **sha256**, więc podmiana pliku pod tą samą nazwą
+     znów zaalarmuje (`-AllowMode id`, gdy program często się aktualizuje),
    - **Pokaż** — otwiera plik różnicy (`alert_*.json`) w Notatniku.
+
+   Okna nie da się zamknąć bez decyzji. Wpisy z **ważnym podpisem Microsoftu**
+   (np. svchost) są auto-zezwalane bez pytania.
 
 Driver egzekwuje decyzje: blokuje tworzenie procesu dla ścieżek z listy blokad.
 
@@ -119,7 +124,7 @@ pwsh -File tools/tests/AutostartGuard.Tests.ps1
 
 Testy jednostkowe i integracyjne (logika, format alertów) — przenośne, działają
 też na Linux/macOS w CI, bez Windows. Plan testów i scenariusze systemowe na VM:
-[`docs/testy.md`](docs/testy.md).
+[`docs/testy.md`](docs/testy.md), ręczne scenariusze: [`docs/testy-reczne.md`](docs/testy-reczne.md).
 
 ---
 
@@ -157,6 +162,7 @@ Testować wyłącznie na VM ze snapshotem.
 │   ├── reference.md                # źródła, formaty JSON, mapowanie MITRE
 │   ├── schemat.svg                 # schemat przepływu (etap 1 + etap 2)
 │   ├── testy.md                    # plan testów i wyniki
+│   ├── testy-reczne.md             # scenariusze testów ręcznych na VM
 │   ├── CI.md                       # opis pipeline, test signing, plan B (EWDK)
 │   └── DRIVER.md                   # etap 2: build, instalacja, użycie drivera
 ├── tools/
@@ -183,6 +189,8 @@ Build sterownika wymaga Visual Studio 2022 + WDK; artefakty (`x64/`, `*.sys`,
 
 - Dopasowanie reguł w driverze po ścieżce, nie po hashu — zmiana nazwy pliku
   obchodzi regułę.
+- Blokowanie opiera się na podpisie binarki, nie argumentów — technika
+  "living off the land" (podpisany svchost z wrogimi parametrami) przechodzi.
 - Brak trwałości reguł po restarcie (w praktyce: zadanie w Harmonogramie).
 - Driver: domyślny deskryptor bezpieczeństwa, brak samoochrony, limity statyczne
   (64 reguły / 259 znaków).

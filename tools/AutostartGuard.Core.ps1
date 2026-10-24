@@ -105,7 +105,25 @@ function Compare-State {
                 $base = $baseById[$id]
                 if ($cur.sha256 -ne $base.sha256 -or $cur.command -ne $base.command) {
                     if (Test-AgAllowed $allowMap $id $cur.sha256) { continue }
-                    $changes.Add([pscustomobject]@{ type = 'changed'; category = $cat; id = $id; before = $base; after = $cur })
+
+                    # Wypisz wprost, co sie zmienilo (sha256 i/lub command).
+                    $diff = [ordered]@{}
+                    if ($cur.sha256 -ne $base.sha256) {
+                        $diff['sha256'] = [pscustomobject]@{ before = $base.sha256; after = $cur.sha256 }
+                    }
+                    if ($cur.command -ne $base.command) {
+                        $diff['command'] = [pscustomobject]@{ before = $base.command; after = $cur.command }
+                    }
+
+                    $changes.Add([pscustomobject]@{
+                            type          = 'changed'
+                            category      = $cat
+                            id            = $id
+                            changedFields = @($diff.Keys)
+                            diff          = [pscustomobject]$diff
+                            before        = $base
+                            after         = $cur
+                        })
                 }
             }
         }
@@ -234,10 +252,27 @@ function Get-AgAllowed {
 }
 
 function Add-AgAllowEntry {
-    param([string] $AllowFile, [string] $Id, [string] $Note = '')
+    param(
+        [string] $AllowFile,
+        [string] $Id,
+        [string] $Sha256,
+        [ValidateSet('sha256', 'id')] [string] $MatchBy = 'sha256',
+        [string] $Note = ''
+    )
     $existing = @(Get-AgAllowed -AllowFile $AllowFile)
-    if ($existing | Where-Object { $_.id -eq $Id }) { return }
-    $existing += [pscustomobject]@{ id = $Id; matchBy = 'id'; note = $Note }
+    if ($existing | Where-Object { $_.id -eq $Id }) { return }   # juz zatwierdzone
+
+    if ($MatchBy -eq 'sha256' -and $Sha256) {
+        # Zatwierdzenie przypiete do hasha: podmiana pliku (ten sam id, inny
+        # sha256) nie bedzie juz dozwolona -> znow pojawi sie jako zmiana.
+        $entry = [pscustomobject]@{ id = $Id; sha256 = $Sha256; note = $Note }
+    }
+    else {
+        # Zatwierdzenie po tozsamosci: cokolwiek siedzi pod tym id jest dozwolone
+        # (wygodne dla czesto aktualizowanych programow).
+        $entry = [pscustomobject]@{ id = $Id; matchBy = 'id'; note = $Note }
+    }
+    $existing += $entry
     @{ allowed = $existing } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $AllowFile -Encoding UTF8
 }
 
@@ -280,6 +315,16 @@ function Get-ChangeSignature {
     if ($null -eq $cur) { return $null }
     if (@($cur.PSObject.Properties.Name) -notcontains 'signature') { return $null }
     return $cur.signature
+}
+
+# SHA-256 pliku ze zmiany typu 'new'.
+function Get-ChangeSha256 {
+    param($Change)
+    if (@($Change.PSObject.Properties.Name) -notcontains 'current') { return $null }
+    $cur = $Change.current
+    if ($null -eq $cur) { return $null }
+    if (@($cur.PSObject.Properties.Name) -notcontains 'sha256') { return $null }
+    return $cur.sha256
 }
 
 # Czy podpis pochodzi od Microsoftu. Pole 'signature' jest ustawiane na CN

@@ -279,7 +279,7 @@ jest punktem integracji dla powiadomień i, później, drivera).
 ### Typy zmian
 
 - **`new`** — nowa tożsamość (`id`), której nie było w baseline → niesie `current`.
-- **`changed`** — ta sama `id`, zmienił się `sha256`/`command` lub `actual` → niesie `before` + `after`.
+- **`changed`** — ta sama `id`, zmienił się `sha256`/`command` (kategorie enumerowane) lub `actual` (pojedyncze wartości). Dla kategorii enumerowanych niesie dodatkowo `changedFields` (lista zmienionych pól) i `diff` (per pole `before`/`after`), obok pełnych `before` + `after`.
 - **`removed`** — `id` był w baseline, zniknął → niesie `previous`.
 
 ### Przykład `alert_2026-10-10_20-21-05.json`

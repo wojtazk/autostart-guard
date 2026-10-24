@@ -44,7 +44,13 @@ param(
     # Domyslnie <app>\data - obok folderu tools, w ktorym lezy ten skrypt.
     [string] $DataPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\data')),
 
-    [switch] $Notify
+    [switch] $Notify,
+
+    # Jak zapisywac zatwierdzenie po kliknieciu "Uruchom":
+    #   sha256 - przypiete do hasha (podmiana pliku = znow alert) - bezpieczniej
+    #   id     - po tozsamosci (dowolny plik pod tym wpisem) - dla czestych update'ow
+    [ValidateSet('sha256', 'id')]
+    [string] $AllowMode = 'sha256'
 )
 
 Set-StrictMode -Version Latest
@@ -135,8 +141,9 @@ switch ($Action) {
                 $name = $c.id -replace '.*\|', ''
 
                 # Zaufany podpis Microsoftu -> auto-zezwol (svchost itp. nie wyskakuja).
+                # Po tozsamosci (id), bo binarki MS sa aktualizowane (zmienia sie hash).
                 if (Test-AgTrustedSigner (Get-ChangeSignature -Change $c)) {
-                    Add-AgAllowEntry -AllowFile $allowFile -Id $c.id -Note 'Auto: podpis Microsoft'
+                    Add-AgAllowEntry -AllowFile $allowFile -Id $c.id -MatchBy id -Note 'Auto: podpis Microsoft'
                     Write-Host "  [MICROSOFT] $name -> zaufany podpis, pomijam"
                     continue
                 }
@@ -148,8 +155,9 @@ switch ($Action) {
 
                 if ($choice -eq 'run') {
                     if ($target) { $blocked = @($blocked | Where-Object { $_ -ne $target }) }
-                    Add-AgAllowEntry -AllowFile $allowFile -Id $c.id -Note 'Zatwierdzone przez uzytkownika (Uruchom)'
-                    Write-Host "  [URUCHOM]  $name -> dodano do allowlisty"
+                    Add-AgAllowEntry -AllowFile $allowFile -Id $c.id -Sha256 (Get-ChangeSha256 -Change $c) `
+                        -MatchBy $AllowMode -Note 'Zatwierdzone przez uzytkownika (Uruchom)'
+                    Write-Host "  [URUCHOM]  $name -> dodano do allowlisty ($AllowMode)"
                     if ($target -and (Test-Path -LiteralPath $target)) {
                         try { Start-Process -FilePath $target } catch { Write-Warning "Nie udalo sie uruchomic: $target" }
                     }
